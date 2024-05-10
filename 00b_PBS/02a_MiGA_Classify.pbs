@@ -1,0 +1,29 @@
+#PBS -N MiGA_Classify
+#PBS -l nodes=1:ppn=24
+#PBS -l mem=1gb
+#PBS -l walltime=7:00:00:00
+#PBS -q inferno     
+#PBS -A GT-ktk3-CODA20
+#PBS -o 00_log/${output}.out
+#PBS -e 00_log/${output}.err
+
+cd $PBS_O_WORKDIR
+
+# Location of MiGA database to use.
+#db=/storage/coda1/p-ktk3/0/eomics3/Databases/TypeMat
+db=/storage/coda1/p-ktk3/0/eomics3/Databases/${db} # (TARA, TullyTARA, NCBI_Prok, RefSeq, RefSoil, Uncultivated, TypeMat)
+
+## Use multiple NODES change nodes=2 or 4 etc ##
+#export "MIGA_NODELIST=$PBS_NODEFILE"
+#options="--daemon $HOME/shared-p/miga-conf/daemon_ssh.json"
+# First run
+#miga classify_wf $options --db-path $db -o ${output} ${input}/*fna # Change this to your file extension
+
+## Use 1 node, multiple ppn. Do I need to Set ppn=12 or 24 etc ?? maybe not.
+miga classify_wf -j 24 -t 1 --db-path $db -o ${output} ${input}/*fna # Change this to your file extension
+
+# Use for restart
+#miga classify_wf $options --db-path $db -o ${output}
+
+## Run Log:
+## qsub -v input=01_All_MAGs,output=02_Derep,db=RefSeq ../00b_PBS/02a_MiGA_Classify.pbs

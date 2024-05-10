@@ -1,0 +1,39 @@
+#PBS -N Bracken
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=2gb
+#PBS -l walltime=1:00:00
+#PBS -q inferno     
+#PBS -A GT-ktk3-CODA20
+#PBS -o 00_log/06b_Bracken_${n}.out
+#PBS -e 00_log/06b_Bracken_${n}.err
+
+# This script builds the gene clusters
+cd $PBS_O_WORKDIR
+
+if [ ! -d 03_Bracken ]
+  then
+	mkdir 03_Bracken
+	cd 03_Bracken
+	mkdir 01_Species 02_Genus 03_Family 04_Order 05_Class 06_Phylum
+	cd ..
+  fi
+
+source activate /storage/home/hcoda1/9/rconrad6/p-ktk3-0/apps/Kraken2
+
+DBNAME="/storage/home/hcoda1/9/rconrad6/p-ktk3-0/apps/Kraken2/DBases/PlusPF"
+
+bracken -d $DBNAME -i $INPUT -o ${OUTDIR}/01_Species/${n}_Species.bracken -r 150 -l 'S' -t 10
+
+bracken -d $DBNAME -i $INPUT -o ${OUTDIR}/02_Genus/${n}_Genus.bracken -r 150 -l 'G' -t 10
+
+bracken -d $DBNAME -i $INPUT -o ${OUTDIR}/03_Family/${n}_Family.bracken -r 150 -l 'F' -t 10
+
+bracken -d $DBNAME -i $INPUT -o ${OUTDIR}/04_Order/${n}_Order.bracken -r 150 -l 'O' -t 10
+
+bracken -d $DBNAME -i $INPUT -o ${OUTDIR}/05_Class/${n}_Class.bracken -r 150 -l 'C' -t 10
+
+bracken -d $DBNAME -i $INPUT -o ${OUTDIR}/06_Phylum/${n}_Phylum.bracken -r 150 -l 'P' -t 10
+
+## Run Log:
+## qsub -v INPUT=,OUTDIR=,n= ../00b_PBS/05h_Kraken.pbs
+## for f in 02_Kraken2_report/*.kreport; do n=`basename $f | cut -d. -f1`; qsub -v INPUT=$f,OUTDIR=03_Bracken,n=$n ../00b_PBS/06b_Bracken.pbs; done

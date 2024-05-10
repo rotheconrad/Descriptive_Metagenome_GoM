@@ -1,0 +1,40 @@
+#PBS -N MMSeqs2_Cluster_Nucs
+#PBS -l nodes=1:ppn=12
+#PBS -l mem=100gb
+#PBS -l walltime=2:00:00:00
+#PBS -q inferno     
+#PBS -A GT-ktk3-CODA20
+#PBS -o 00_log/07c_MMSeqs2_Cluster_Nucs.out
+#PBS -e 00_log/07c_MMSeqs2_Cluster_Nucs.err
+
+# Change to working directory
+cd $PBS_O_WORKDIR
+
+# make a tmp folder
+mkdir tmp
+
+# create an mmseqs database
+DB=05_MMSeqClusterDB
+mkdir $DB
+mmseqs createdb $infile $DB/$DB --dbtype 2
+# --dbtype INT          Database type 0: auto, 1: amino acid 2: nucleotides [0]
+
+# Cluster at 95% nucleotide ID
+C95=06_MMSeqCluster_95
+mkdir $C95
+mmseqs cluster $DB/$DB $C95/$C95 tmp --min-seq-id 0.95 --cov-mode 1 -c 0.5 --cluster-mode 2 --cluster-reassign --threads 12
+# convert to tsv format
+mmseqs createtsv $DB/$DB $DB/$DB $C95/$C95 $C95.tsv --threads 12
+
+# Cluster at 90% nucleotide ID
+C90=07_MMSeqCluster_90
+mkdir $C90
+mmseqs cluster $DB/$DB $C90/$C90 tmp --min-seq-id 0.90 --cov-mode 1 -c 0.5 --cluster-mode 2 --cluster-reassign --threads 12
+# convert to tsv format
+mmseqs createtsv $DB/$DB $DB/$DB $C90/$C90 $C90.tsv --threads 12
+
+rm -r tmp
+
+## Run Log ##
+## qsub -v infile= ../00b_PBS/07c_MMSeqs2_Cluster.pbs
+## qsub -v infile=02_Prodigal_FNA_ALLCAT.fna ../00b_PBS/07c_MMSeqs2_Cluster_Nucs.pbs

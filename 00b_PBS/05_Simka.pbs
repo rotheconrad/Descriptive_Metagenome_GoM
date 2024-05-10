@@ -1,0 +1,32 @@
+#PBS -N Simka
+#PBS -l nodes=1:ppn=20
+#PBS -l mem=20gb
+#PBS -l walltime=12:00:00
+#PBS -q inferno     
+#PBS -A GT-ktk3-CODA20
+#PBS -o 00_log/05_Simka.out
+#PBS -e 00_log/05_Simka.err
+
+# Change to working directory
+cd $PBS_O_WORKDIR
+
+# Make outdir if not exist
+if [ ! -d $outdir ]; then mkdir $outdir; fi
+
+simka -in $infile -out $outdir -out-tmp $outdir -max-reads 0 -simple-dist -complex-dist \
+-nb-cores 20 -max-memory 20000 -max-count 20 -max-merge 20
+
+module purge
+module load r
+makefigs="/storage/home/hcoda1/9/rconrad6/p-ktk3-0/apps/simka-v1.5.3/scripts/visualization/run-visualization.py"
+
+mkdir 03a_bySTATION
+python $makefigs -in $outdir -out 03a_bySTATION -pca -heatmap -tree \
+-metadata-in $metain -metadata-variable STATION -width 7.5 -height 7.5 -format pdf
+
+mkdir 03b_byDEPTH
+python $makefigs -in $outdir -out 03b_byDEPTH -pca -heatmap -tree \
+-metadata-in $metain -metadata-variable DEPTH -width 7.5 -height 7.5 -format pdf
+
+## Run Log ##
+## qsub -v infile=01a_Simka_input.txt,outdir=02_Simka_Results,metain=01b_Simka_meta.txt ../00b_PBS/05_Simka.pbs

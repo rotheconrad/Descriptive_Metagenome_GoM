@@ -1,0 +1,26 @@
+#PBS -N MiGA_Derep
+#PBS -l nodes=1:ppn=24
+#PBS -l mem=1gb
+#PBS -l walltime=7:00:00:00
+#PBS -q inferno     
+#PBS -A GT-ktk3-CODA20
+#PBS -o 00_log/MiGA_Derep_${output}.out
+#PBS -e 00_log/MiGA_Derep_${output}.err
+
+cd $PBS_O_WORKDIR
+
+## Use multiple NODES change nodes=2 or 4 etc ##
+## export "MIGA_NODELIST=$PBS_NODEFILE"
+## options="--daemon $HOME/shared-p/miga-conf/daemon_ssh.json"
+# Run after classify_wf
+# miga derep_wf $options -o ${output}
+
+# Run after classify_wf
+miga derep_wf -j 24 -t 1 -o ${output}
+
+# Solo First run
+# miga derep_wf -o ${output} -c ${input}/*fna
+
+## Run Log:
+## qsub -v output= 00_PBS/03_MiGA_Quality.pbs
+## qsub -v output=02_Derep ../00b_PBS/02b_MiGA_Derep.pbs 

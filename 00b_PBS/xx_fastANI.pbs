@@ -1,0 +1,41 @@
+#PBS -N AllvAll_fastANI
+#PBS -l nodes=1:ppn=5
+#PBS -l mem=10gb
+#PBS -l walltime=12:00:00
+#PBS -q inferno     
+#PBS -A GT-ktk3-CODA20
+#PBS -o 00_log/09_AllvAll_fastANI.out
+#PBS -e 00_log/09_AllvAll_fastANI.err
+
+## Runs all verse all fastANI on directory of genomes
+## Uses gnu parallel to speed it up
+## fastANI must be installed in the user path
+
+module load parallel/20190222
+
+cd $PBS_O_WORKDIR
+
+#if [ ! -d 00_log ]; then mkdir 00_log; fi # pheonix requires log directory to exist prior
+if [ ! -d ${oDir} ]; then mkdir ${oDir}; fi
+
+q_array=(${qDir}/*fna)
+r_array=(${rDir}/*fna)
+qList=Temp_qGenome_List.txt
+rList=Temp_rGenome_List.txt
+oList=Temp_Output_list.txt
+
+# write list of genomes to pass to fastANI
+for f in ${q_array[@]}; do echo $f >> ${qList}; x=`basename $f | cut -d. -f1`; echo ${oDir}/${x}.ani >> ${oList}; done
+for f in ${r_array[@]}; do echo $f >> ${rList}; done
+
+# run fastANI in parallel
+parallel -j 5 --joblog 00_log/03b_parallel_fastANI.log 'fastANI -q {1} --rl {3} -o {2}; echo {1}' :::: ${qList} ::::+ ${oList} ::: ${rList}
+
+# clean up temp gList
+rm ${qList} ${rList} ${oList}
+
+## To Run:
+## qsub -v qDir=Query_Genome_Directory,rDir=Ref_Genome_Directoy,oDir=Output_Directory ../00b_PBS/09_fastANI.pbs
+
+## Run Log:
+## qsub -v qDir=01_Orig_03a_GoM_MAGs,rDir=../01b_Representative_MAGs/03_Renamed_Derepped_MAGs,oDir=02_03a-03b_ANI ../00b_PBS/09_fastANI.pbs

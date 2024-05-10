@@ -1,0 +1,20 @@
+#PBS -N CheckM-dir
+#PBS -l nodes=1:ppn=20
+#PBS -l mem=150gb
+#PBS -l walltime=7:00:00:00
+#PBS -q inferno     
+#PBS -A GT-ktk3-CODA20
+#PBS -o 00_log/04d_CheckM-dir_${n}.out
+#PBS -e 00_log/04d_CheckM-dir_${n}.err
+
+cd $PBS_O_WORKDIR
+
+module purge
+
+source activate /storage/home/hcoda1/9/rconrad6/p-ktk3-0/apps/GTDB
+
+checkm lineage_wf -t 20 -f ${OUTPUT}/${n}_summary.tsv $INPUT $OUTPUT
+
+## Run Log:
+## qsub -v INPUT=,OUTPUT=,n= 00b_PBS/
+## qsub -v INPUT=../02_Derep_Classify/02_Derep/representatives,OUTPUT=02_CheckM,n=GoMDrpd ../00b_PBS/03b_CheckM.pbs

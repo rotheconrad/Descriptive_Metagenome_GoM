@@ -1,0 +1,22 @@
+#PBS -N GTDBtk
+#PBS -l nodes=1:ppn=20
+#PBS -l mem=320gb
+#PBS -l walltime=1:00:00:00
+#PBS -q inferno     
+#PBS -A GT-ktk3-CODA20
+#PBS -o 00_log/04c_GTDBtk_${n}.out
+#PBS -e 00_log/04c_GTDBtk_${n}.err
+
+cd $PBS_O_WORKDIR
+
+module purge
+
+source activate /storage/home/hcoda1/9/rconrad6/p-ktk3-0/apps/GTDB
+
+gtdbtk classify_wf --genome_dir $INPUT --out_dir $OUTPUT --prefix $n --cpus 20
+
+# Expects genome fasta files with *.fna extention
+
+## Run Log:
+## qsub -v INPUT=,OUTPUT=,n= ../00b_PBS/03a_GTDBtk.pbs
+## qsub -v INPUT=../02_Derep_Classify/02_Derep/representatives,OUTPUT=01_GTDBtk,n=GoMDrpd ../00b_PBS/03a_GTDBtk.pbs

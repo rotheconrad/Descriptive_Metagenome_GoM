@@ -1,0 +1,64 @@
+#PBS -N CovMagBas
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=50gb
+#PBS -l walltime=12:00:00
+#PBS -q inferno     
+#PBS -A GT-ktk3-CODA20
+#PBS -o 00_log/07e_CovMag_${o}.out
+#PBS -e 00_log/07e_CovMag_${o}.err
+
+cd $PBS_O_WORKDIR
+
+CovMag=/storage/coda1/p-ktk3/0/rconrad6/03c_GoM_One/00c_Scripts/07c_MagicBlast_CoverageMagic_Basic.py
+
+# Check for output directories
+if [ ! -d $odir ]; then mkdir $odir; fi
+if [ ! -d ${odir}/GENEtad ];
+  then
+	cd ${odir}
+	mkdir GenomeSummary GENEtad GENEbreadth interGENEtad interGENEbreadth CONTIGtad CONTIGanir CONTIGbreadth
+	cd ..
+fi
+
+# Check if completed previously
+if [ ! -s ${odir}/ANIcontig/${out}_contig_ani.tsv ]
+  then
+	# With prodigal genes
+	python $CovMag -m $m -g $g -b $b -p $p -o $o
+	# Without genes
+	#python $CovMag -m $m -g $g -b $b -o $o -c $idlow -u $idhigh
+fi
+
+# Check if finished and move output files for organization
+if [ -s ${o}_genome.tsv ]
+  then
+
+	mv ${o}_genome.tsv ${odir}/GenomeSummary/${o}_genome.tsv
+	mv ${o}_gene_tad.tsv ${odir}/GENEtad/${o}_gene_tad.tsv
+	mv ${o}_gene_breadth.tsv ${odir}/GENEbreadth/${o}_gene_breadth.tsv
+	mv ${o}_inter-gene_tad.tsv ${odir}/interGENEtad/${o}_inter-gene_tad.tsv
+	mv ${o}_inter-gene_breadth.tsv ${odir}/interGENEbreadth/${o}_inter-gene_breadth.tsv
+	mv ${o}_contig_tad.tsv ${odir}/CONTIGtad/${o}_contig_tad.tsv
+	mv ${o}_contig_anir.tsv ${odir}/CONTIGanir/${o}_contig_anir.tsv
+	mv ${o}_contig_breadth.tsv ${odir}/CONTIGbreadth/${o}_contig_breadth.tsv
+
+
+fi
+
+## Check paths and names for moved output files
+printf '\n\n'
+echo Outputs:
+echo ${odir}/GenomeSummary/${o}_genome.tsv
+echo ${odir}/GENEtad/${o}_gene_tad.tsv
+echo ${odir}/GENEbreadth/${o}_gene_breadth.tsv
+echo ${odir}/interGENEtad/${o}_inter-gene_tad.tsv
+echo ${odir}/interGENEbreadth/${o}_inter-gene_breadth.tsv
+echo ${odir}/CONTIGtad/${o}_contig_tad.tsv
+echo ${odir}/CONTIGani/${o}_contig_ani.tsv
+echo ${odir}/CONTIGbreadth/${o}_contig_breadth.tsv
+printf '\n\n'
+echo "CoverageMagic PBS End."
+
+## Run Log:
+## qsub -v m=metagenome.fa,g=assembly.fna,b=ReadMap.fltrdBstHts.blst,p=prodigal.faa,o=output_name,odir=output_dir ../00b_PBS/07e_CoverageMagic.pbs
+## for f in 06_Read_Mapping/*blst; do name=`basename $f | cut -d- -f1`; qsub -v m=../01a_Pipeline_Results/02_trim/${name}.coupled.fa,g=../07_Genetic_Diversity/01_Metagenome_Assemblies/${name}-trim.LargeContigs.fna,b=${f},p=../07_Genetic_Diversity/03_Prodigal_FAA/${name}.faa,o=${name},odir=07_Gene_Abundance ../00b_PBS/07e_CoverageMagic.pbs ; done

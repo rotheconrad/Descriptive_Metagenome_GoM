@@ -1,0 +1,50 @@
+#PBS -N MMSeqs2_Cluster_Prots
+#PBS -l nodes=1:ppn=12
+#PBS -l mem=100gb
+#PBS -l walltime=2:00:00:00
+#PBS -q inferno     
+#PBS -A GT-ktk3-CODA20
+#PBS -o 00_log/07c_MMSeqs2_Cluster_Prots.out
+#PBS -e 00_log/07c_MMSeqs2_Cluster_Prots.err
+
+# Change to working directory
+cd $PBS_O_WORKDIR
+
+# make a tmp folder
+mkdir tmp
+
+# create an mmseqs database
+DB=01_MMSeqClusterDB
+mkdir $DB
+mmseqs createdb $infile $DB/$DB --dbtype 1
+# --dbtype INT          Database type 0: auto, 1: amino acid 2: nucleotides [0]
+
+# Cluster at 95% nucleotide ID
+C70=02_MMSeqCluster_70
+mkdir $C70
+mmseqs cluster $DB/$DB $C70/$C70 tmp --min-seq-id 0.70 --cov-mode 1 -c 0.5 --cluster-mode 2 --cluster-reassign --threads 12
+# convert to tsv format
+mmseqs createtsv $DB/$DB $DB/$DB $C70/$C70 $C70.tsv --threads 12
+# for amino acid clustering get the representative sequence for annotation.
+C70rep=03_MMSeqCluster_70_Reps
+mkdir $C70rep
+mmseqs createsubdb $C70/$C70 $DB/$DB $C70rep/$C70rep
+mmseqs convert2fasta $C70rep/$C70rep ${C70rep}.faa
+
+# Cluster at 90% nucleotide ID
+C40=04_MMSeqCluster_40
+mkdir $C40
+mmseqs cluster $DB/$DB $C40/$C40 tmp --min-seq-id 0.40 --cov-mode 1 -c 0.5 --cluster-mode 2 --cluster-reassign --threads 12
+# convert to tsv format
+mmseqs createtsv $DB/$DB $DB/$DB $C40/$C40 $C40.tsv --threads 12
+# for amino acid clustering get the representative sequence for annotation.
+C40rep=05_MMSeqCluster_40_Reps
+mkdir $C40rep
+mmseqs createsubdb $C40/$C40 $DB/$DB $C40rep/$C40rep
+mmseqs convert2fasta $C40rep/$C40rep ${C40rep}.faa
+
+rm -r tmp
+
+## Run Log ##
+## qsub -v infile= ../00b_PBS/07c_MMSeqs2_Cluster.pbs
+## qsub -v infile=../07_Genetic_Diversity/03_Prodigal_FAA_ALLCAT.faa ../00b_PBS/08a_MMSeqs2_Cluster_Prots.pbs

@@ -1,0 +1,753 @@
+These are the notes for the descriptive analysis manuscript for the GoM Samples.
+Preparation begun Dec 2nd 2021 by Roth Conrad
+
+We have 19 samples collected on an Endeavor cruise in the Gulf of Mexico (GoM) in 2014?.
+The samples are depth stratified from three stations.
+Two stations have 5 depth samples and one station samples much deeper with 9.
+Staions 2 and 8 are closer to the coast with 5 depths sampled each.
+Station 5 is just off the shelf and has 4 additional deeper depths sampled.
+
+All commands below were run on my user account on PACE at GA Tech.
+Command line entries begin with ">".
+All other lines are commentary.
+
+#####################################
+## STEP 00: SETUP   ################################
+#####################################
+
+This step does not address a question. It is the setup.
+
+From: /storage/home/hcoda1/9/rconrad6/p-ktk3-0
+
+Create directory and copy RAW metagenome fastq files.
+> mkdir 03c_GoM_One
+> cd 03c_GoM_One
+> mkdir 00b_PBS 00c_Scripts 00d_RAW_READS
+> cp /storage/coda1/p-ktk3/0/shared/rich_project_bio-konstantinidis/shared3/projects/GoM/ORIGINAL_RAW_READS/* 00d_RAW_READS
+# I also placed all my qsub (.pbs) scripts and Python scripts to the PBS and Scripts directories.
+
+In my experience, the default Illumina read names can create issues downstream so I like to rename them right from the start.
+> cd 00d_RAW_READS
+# First I unzip the compressed fastq files
+> for f in *.gz; do n=`basename $f | cut -d. -f1`; qsub -v f=$f,n=$n ../00b_PBS/gunzip.pbs; done
+# Make a directory for qsub log files
+> mkdir 00_log
+# I use a script to rename the sequence names for each read in each file
+> for f in *fastq; do n=`basename $f | cut -d_ -f1-2`; r=`basename $f | cut -dd -f2 | cut -d. -f1`; qsub -v n=$n,r=$r,input=$f ../00b_PBS/01_Rename_Fastq_Sequences.pbs; done
+# I re-compress the fastq files
+> for f in *fastq; do n=`basename $f | cut -d. -f1`; qsub -v f=$f,n=$n ../00b_PBS/gzip.pbs; done
+
+########## Some Plots to get oriented with the samples:
+From OneDrive: 03c_GoM_One/00a_DataTables/
+
+# Map plot of stations:
+> python ../00c_Scripts/00c_LongLat_Map_Plot.py -i Sample_Lon_Lat.tsv -o Sample_Lon_Lat.pdf -ymin 21 -ymax 30 -xmin -97 -xmax -83
+
+# TS plots of stations and samples
+## I split the plot into a main plot and a subset plot because station 2 surface readings are way less salty than the other readings. I did this quickly and didn't parameterize or code the difference. I just comment a section of code in the script. You'll see the note in the code. So I change the commented section and run the script twice then I overlaid the subset plot on the main truncated plot in illustrator.
+
+> python ../00c_Scripts/00e_TS_Plots_Stations.py -f1 Station_Depth_Temp_Salinity.tsv -f2 Sample_Temp_Salinity_Density.tsv -o Station_Sample_TS_plot_Truncated.pdf
+> python ../00c_Scripts/00e_TS_Plots_Stations.py -f1 Station_Depth_Temp_Salinity.tsv -f2 Sample_Temp_Salinity_Density.tsv -o Station_Sample_TS_plot_Subset.pdf
+
+#####################################################
+## STEP 01: Trim, Assemble and Bin   ################################
+#####################################################
+
+What is our sequencing effort?
+How well do our samples assemble?
+How many MAGs do we get per sample?
+
+In this step we use a genome diversity pipeline developed on the PACE cluster at GA Tech
+GitHub: https://github.com/lmrodriguezr/genome_diversity_pipeline
+
+Quickly, the steps are:
+
+01_reads - make a copy of the original data
+02_trim - adapter clipping and quality trimming with BBDuk from JGI's BBtools
+03_norm - kmer normalization of trimmed reads using BBNorm from JGI's BBtools
+04_asm - assembly of the trimmed dataset and the normalized dataset using IDBA_ud
+05_maxbin - Bin trim and norm assemblies using maxbin
+06_metabat - Bin trim and norm assemblies using metabat
+07_derep - Dereplicate bins and keep the highest quality representative of each bin using MiGA
+08_anir - Calculate anir for each representative bin.
+
+From: /storage/home/hcoda1/9/rconrad6/p-ktk3-0/03c_GoM_One
+> git clone https://github.com/lmrodriguezr/genome_diversity_pipeline
+> for f in 00d_RAW_READS/*1.fastq.gz; do n=`basename $f | cut -d_ -f1-2`; genome_diversity_pipeline/01_add.bash 01a_Pipeline_Results $n 00d_RAW_READS/${n}_read[12].fastq.gz; done
+
+This pipeline is rather finicky and my experience with PACE is that occasionaly things will fail randomly.
+Because of this, I double check the outputs for each step of the pipeline.
+I include notes on what I look for to confirm the success for each step.
+
+Checks for Successful run:
+
+Step 02:
+The log file does not seem to be informative of the success or failure
+
+You should have four files for each sample:
+1) *.1.fastq.gz
+2) *.2.fastq.gz
+3) *.coupled.fa
+4) *.log
+
+Step 03:
+You should have three files for each sample:
+1) *.1.fastq.gz
+2) *.2.fastq.gz
+3) *.coupled.fa
+
+The log files should have Pass 1 and Pass 2
+"Approx. read depth median" should be the line before "Removing temp files"
+and there should be a total time near the end of the log file.
+
+Step 04: IDBA Assembly
+There should be two *.LargeContigs.fna files for each sample
+1) *-norm.LargeContigs.fna - this is from the bbnorm normalized readset (it is also trimmed)
+2) *-trim.LargeContigs.fna - this is from the non-normalized trimmed readset.
+
+Some errors will create a core.idba_ud.* file. If you see this, there was an error somewhere.
+You can use: tail -n 3 core.idba_ud.{filename}
+Near the top you will see the filename/sample name that had the error
+Then you can check the log file using tail -n 200 {sample name}.04.txt
+
+** CAUTION **
+You can still get the *.LargeContigs.fna even if there were errors.
+
+Step 05: MaxBin
+** There is an ongoing error when running multiple datasets and bowtie2 tries to start at the same time **
+** Temp fix: Start or restart pipeline using the sleep 30 or 60 command to stagger the pbs jobs **
+
+All *.05.txt files in the xx_log directory should have two "Job finished" lines.
+One for the 02_trim assembly and one for the 03_norm assembly.
+grep "Job finished" xx_log/*.05.txt
+
+## perl math: perl -e 'print int(3+0.4*40000000000/1e9), "\n"' ##
+
+Step 06:
+was getting ram errors with samtools sort. was set at 10gb. increased to 20gb stille errors. try 50gb.
+added -m 2G to samtools sort command and set ram at 25G for -@ 11. that is 2G per ppn. seems to work.
+
+xx_log/*.06.txt should contain "Finished" twice. Once for norm and once for trim.
+grep "Finished" xx_log/*.06.txt
+
+Step 07:
+Each dataset should have representatives directory, representatives.txt file, and representatives.fna file
+
+Step 08:
+Each dataset should have a anir-95.tsv file summarizing the results.
+
+This pipeline can be restarted for specific samples that have failed at any given step.
+First delete the files for the step that failed
+Then delete files for all steps after the failed step
+I also like to delete the log files in xx_log for the failed steps.
+Makes them easier to read on the next attempt.
+
+Then run:
+genome_diversity_pipeline/xx_runme.bash target_dir dataset_name
+genome_diversity_pipeline/xx_runme.bash 01a_Pipeline_Results EN_84
+
+# Once this step is completed successfully I remove 00d_RAW_READS, 01_reads, and 03_norm
+# They are no longer needed for anything downstream. We do need the 02_trim reads.
+> rm -r 00d_RAW_READS 01a_Pipeline_Results/01_reads 01a_Pipeline_Results/03_norm
+
+# I also remove a bunch of files from 07_derep
+From 01a/Pipeline_Results/07_Derep
+> rm -r */data */metadata */miga.project.json */daemon
+
+######## Collect some basic data for accounting and build some bar plots
+
+## How many base pairs in metagenomes after trimming?
+## Average GC content of reads after trimming?
+From:
+> for f in *.fa; do python ../../00c_Scripts/00_Fasta_count_BasePairs.py -i $f; done
+> for f in *.fa; do python ../../00c_Scripts/00_Fasta_GC_Content.py -i $f; done
+
+## How many contigs were assembled for each metagenome?
+## How many base pairs long is the assembly?
+## Average GC content of the assembly?
+## What is the N50 of the assembly?
+From: /storage/home/hcoda1/9/rconrad6/p-ktk3-0/03c_GoM_One/01a_Pipeline_Results/04_asm
+> for f in *.fna; do echo $f `grep -c '>' $f`; done
+> for f in *.fna; do python ../../00c_Scripts/00_Fasta_count_BasePairs.py -i $f; done
+> for f in *.fna; do python ../../00c_Scripts/00_Fasta_GC_Content.py -i $f; done
+> for f in *trim*fna; do python ../../00c_Scripts/00_Fasta_Get_N50.py -i $f; done
+
+## How many CDS were predicted for metagenome assemblies?
+From: /storage/home/hcoda1/9/rconrad6/p-ktk3-0/03c_GoM_One/07_Genetic_Diversity/02_Prodigal_FNA
+> for f in *.fna; do echo $f `grep -c '>' $f`; done
+
+## Build bar plots of collected data
+## From OneDrive: 03c_GoM_One/00a_DataTables/
+## Compile all data in a tsv file.
+> python ../00c_Scripts/00d_Bar_Plots.py -i Sequence_Assembly_Data.tsv -o BAR_PLOTS/Sequence_Assembly
+
+#######################################################################################
+## STEP 02: Dereplicate total MAG Set and Classify Representative MAGs   ################################
+#######################################################################################
+
+What MAGs can we recover from our samples?
+How do these MAGs compare to whats in the databases?
+Any Novel MAGs? High Quality MAGs?
+
+Previously, we assembled and binned each sample separately.
+In this step we want to dereplicate MAGs across samples and then classify them.
+We will use MiGA to dereplicate and classify to the TypeStrain database.
+
+# SETUP
+From: /storage/home/hcoda1/9/rconrad6/p-ktk3-0/03c_GoM_One
+> mkdir 02_Derep_Classify
+> cd 02_Derep_Classify
+> mkdir 00_log 01_All_MAGs
+# Copy representative MAGs from each sample to the new folder
+> cp ../01a_Pipeline_Results/07_derep/*/representatives/* 01_All_MAGs/
+# First we want to classify the MAGs with the RefSeq database prior to dereplication
+> mkdir 02_Derep
+> qsub -v input=01_All_MAGs,output=02_Derep,db=RefSeq ../00b_PBS/02a_MiGA_Classify.pbs
+# Then we start the Derep workflow
+> qsub -v output=02_Derep ../00b_PBS/02b_MiGA_Derep.pbs 
+# The representative MAGs from all samples are now in 02_Derep/representatives
+# Then we classify them with the TypeStrain database
+> qsub -v input=02_Derep/representatives,output=03_TypeMat,db=TypeMat ../00b_PBS/02a_MiGA_Classify.pbs 
+# Then we classify them to the TARA MAGs of Delmont
+> qsub -v input=02_Derep/representatives,output=04_Delmont,db=TARA ../00b_PBS/02a_MiGA_Classify.pbs
+# Then we classify them to the TARA MAGs of Tully
+> qsub -v input=02_Derep/representatives,output=05_Tully,db=TullyTARA ../00b_PBS/02a_MiGA_Classify.pbs
+# Then we classify them with the NCBI_Prok database just to see
+> qsub -v input=02_Derep/representatives,output=06_NCBI_Prok,db=NCBI_Prok ../00b_PBS/02a_MiGA_Classify.pbs
+
+# Then we extract data for our Supplemental Excel Files
+
+#######################################################
+## STEP 03: Additional Classification   ################################
+#######################################################
+
+How does MiGA compare with GTDB and CheckM?
+
+We will use GTDB-tk for this analysis to see contrast results from MiGA
+
+# SETUP
+From: /storage/home/hcoda1/9/rconrad6/p-ktk3-0/03c_GoM_One
+> mkdir mkdir 03_Additional_Classification
+> cd 03_Additional_Classification
+> mkdir 00_log 01_GTDBtk 02_CheckM
+# Run GTDBtk
+> qsub -v INPUT=../02_Derep_Classify/02_Derep/representatives,OUTPUT=01_GTDBtk,n=GoMDrpd ../00b_PBS/03a_GTDBtk.pbs
+# Run CheckM
+> qsub -v INPUT=../02_Derep_Classify/02_Derep/representatives,OUTPUT=02_CheckM,n=GoMDrpd ../00b_PBS/03b_CheckM.pbs
+
+#####################################
+## STEP 04: Alpha Diversity   ################################
+#####################################
+
+What fraction of the total population did we capture in our samples given the level of sequencing effort?
+How does NonPareil diversity compare between samples?
+
+We will use NonPareil for this analysis.
+https://doi.org/10.1128/mSystems.00039-18
+https://nonpareil.readthedocs.io/
+https://github.com/lmrodriguezr/nonpareil
+
+Nonpareil recommends to use only the 1st read pair of quality controlled reads in fasta format.
+Step 02 leaves us with a coupled (interleaved) fasta for each sample.
+We will retrieve the 1st read pair from this file and then run NonPareil.
+
+From: /storage/home/hcoda1/9/rconrad6/p-ktk3-0/03c_GoM_One
+# Setup
+> mkdir 04_Alpha_Diversity
+> cd 04_Alpha_Diversity
+> mkdir 00_log 01_Read1_fasta 02_NonPareil
+# Retrieve read 1 fasta
+> for f in ../01a_Pipeline_Results/02_trim/*fa; do n=`basename $f | cut -d. -f1`; qsub -v input=$f,outdir=01_Read1_fasta,n=$n ../00b_PBS/04a_DeCouple_fasta.pbs; done
+# Run NonPareil
+> for f in 01_Read1_fasta/*fasta; do n=`basename $f | cut -d_ -f1-2`; qsub -v input=$f,output=02_NonPareil,name=$n ../00b_PBS/04b_NonPareil.pbs; done
+
+I make the NonPareil plot locally using the *.npo files in R as below:
+# First step is to create a sample file to specifiy filenames and colors.
+# See instructions here: https://nonpareil.readthedocs.io/en/latest/curves.html
+# 03a_samples_byStation.txt and 03b_samples_byDepth.txt
+# Install R. Install RStudio. Open R.
+> install.packages('Nonpareil');
+> library(Nonpareil);
+> setwd("~/OneDrive - Georgia Institute of Technology/03c_GoM_One/04_Alpha_Diversity")
+
+# Plot by station
+> samples <- read.table('03a_samples_byStation.txt', sep='\t', header=TRUE, as.is=TRUE)
+> attach(samples)
+> nps <- Nonpareil.set(File, col=Col, labels=Name, plot.opts=list(plot.observed=FALSE))
+> summary(nps)
+
+# Copy summary to Excel
+
+# Plot by Depth
+> samples <- read.table('03b_samples_byDepth.txt', sep='\t', header=TRUE, as.is=TRUE)
+> attach(samples)
+> nps <- Nonpareil.set(File, col=Col, labels=Name, plot.opts=list(plot.observed=FALSE))
+> detach(samples)
+
+I did quick statistical tests in the Excel files I prepared for the manuscript.
+
+#####################################
+## STEP 05: Beta Diversity   ################################
+#####################################
+
+Which samples are most similar to each other?
+
+We will use Simka for this analysis.
+https://peerj.com/articles/cs-94/
+https://github.com/GATB/simka
+
+From: /storage/home/hcoda1/9/rconrad6/p-ktk3-0/03c_GoM_One
+> mkdir 05_Beta_Diversity
+> cd 05_Beta_Diversity
+# Create input and meta files for simka.
+# 01a_Simka_input.txt and 01b_Simka_meta.txt
+> qsub -v infile=01a_Simka_input.txt,outdir=02_Simka_Results,metain=01b_Simka_meta.txt ../00b_PBS/05_Simka.pbs
+
+#####################################
+## STEP 06: Taxonomic Diversity   ################################
+#####################################
+
+What is the taxonomic distribution and similarity across the samples?
+What fraction of our samples can be classified with the database?
+
+We will use Kraken and Bracken for this analysis
+https://ccb.jhu.edu/software/kraken2/
+https://ccb.jhu.edu/software/bracken/
+
+From: /storage/home/hcoda1/9/rconrad6/p-ktk3-0/03c_GoM_One
+> mkdir 06_Taxonomic_Diversity
+> cd 06_Taxonomic_Diversity
+> mkdir 00_log
+# Run Kraken
+> for f in ../01a_Pipeline_Results/02_trim/*fa; do n=`basename $f | cut -d. -f1`; echo $n; qsub -v INPUT=$f,n=$n ../00b_PBS/06a_Kraken.pbs; done
+# Run Bracken
+> for f in 02_Kraken2_report/*; do n=`basename $f | cut -d. -f1`; qsub -v INPUT=$f,OUTDIR=03_Bracken,n=$n ../00b_PBS/06b_Bracken.pbs; done
+# Plot Results
+# Bracken only (unclassified reads not included).
+> python ../00c_Scripts/06_Bracken-Kraken_Barplots.py -i Bracken_files-01-species.txt -o 07_Plots_BrackenOnly/01_Bracken_Species.pdf
+> python ../00c_Scripts/06_Bracken-Kraken_Barplots.py -i Bracken_files-02-genus.txt -o 07_Plots_BrackenOnly/02_BrackenKraken_Genus.pdf
+> python ../00c_Scripts/06_Bracken-Kraken_Barplots.py -i Bracken_files-03-family.txt -o 07_Plots_BrackenOnly/03_BrackenKraken_Family.pdf
+> python ../00c_Scripts/06_Bracken-Kraken_Barplots.py -i Bracken_files-04-order.txt -o 07_Plots_BrackenOnly/04_BrackenKraken_Order.pdf
+> python ../00c_Scripts/06_Bracken-Kraken_Barplots.py -i Bracken_files-05-class.txt -o 07_Plots_BrackenOnly/05_BrackenKraken_Class.pdf
+> python ../00c_Scripts/06_Bracken-Kraken_Barplots.py -i Bracken_files-06-phylum.txt -o 07_Plots_BrackenOnly/06_BrackenKraken_Phylum.pdf
+# Bracken Plus Kraken adjustment
+> python ../00c_Scripts/06_Bracken-Kraken_Barplots.py -i Bracken_files-01-species.txt -o 08_Plots_BrackenKraken/01_BrackenKraken_Species.pdf -k Kraken_files.txt
+> python ../00c_Scripts/06_Bracken-Kraken_Barplots.py -i Bracken_files-02-genus.txt -o 08_Plots_BrackenKraken/02_BrackenKraken_Genus.pdf -k Kraken_files.txt
+> python ../00c_Scripts/06_Bracken-Kraken_Barplots.py -i Bracken_files-03-Family.txt -o 08_Plots_BrackenKraken/03_BrackenKraken_Family.pdf -k Kraken_files.txt
+> python ../00c_Scripts/06_Bracken-Kraken_Barplots.py -i Bracken_files-04-order.txt -o 08_Plots_BrackenKraken/04_BrackenKraken_Order.pdf -k Kraken_files.txt
+> python ../00c_Scripts/06_Bracken-Kraken_Barplots.py -i Bracken_files-05-class.txt -o 08_Plots_BrackenKraken/05_BrackenKraken_Class.pdf -k Kraken_files.txt 
+> python ../00c_Scripts/06_Bracken-Kraken_Barplots.py -i Bracken_files-06-phylum.txt -o 08_Plots_BrackenKraken/06_BrackenKraken_Phylum.pdf -k Kraken_files.txt
+
+#####################################
+## STEP 07: Genetic Diversity   ################################
+#####################################
+
+How similar are samples at a nucleotide sequence level?
+Shared nucleotide sequence between samples (by depth or by site)
+How much sequence is shared between sites or depths at 90% or 95% nucleotide sequence similarity?
+How much sequence is unique to each sample, site, or depth?
+
+We will use Prodigal for this analysis.
+https://github.com/hyattpd/Prodigal
+
+We will use MMSeq2 for this analysis.
+https://github.com/soedinglab/mmseqs2
+
+In this step we will cluster predicted genes at the nucleotide level
+using 90% identity and 95% identity to see how similar samples
+are at a genetic level.
+
+From: /storage/home/hcoda1/9/rconrad6/p-ktk3-0/03c_GoM_One
+> mkdir 07_Genetic_Diversity
+> cd 07_Genetic_Diversity
+# first we need to collect the metagenomes and append the sample names to the sequence names
+> mkdir 00_log 01_Metagenome_Assemblies
+> cp ../01a_Pipeline_Results/04_asm/*trim*fna 01_Metagenome_Assemblies/
+> for f in 01_Metagenome_Assemblies/*; do n=`basename $f | cut -d- -f1`; qsub -v input=$f,n=$n ../00b_PBS/07a_Append_Fasta_SeqNames.p$
+
+# Now we need to predict genes with prodigal
+> mkdir 02_Prodigal_FNA 03_Prodigal_FAA 04_Prodigal_GFF
+> for f in 01_Metagenome_Assemblies/*fna; do name=`basename $f | cut -d- -f1`; qsub -v infile=$f,name=$name ../00b_PBS/07b_Prodigal_Me$
+
+# Now we concatenate all nucleotide fastas together (FNA)
+> cat 02_Prodigal_FNA/* >> 02_Prodigal_FNA_ALLCAT.fna
+
+# Then we cluster with mmseqs2 and convert output to tsv format
+> qsub -v infile=02_Prodigal_FNA_ALLCAT.fna ../00b_PBS/07c_MMSeqs2_Cluster_Nucs.pbs
+
+# Then we write a magic python script to analyze the results
+# I did this next part locally because it is not computationally intensive.
+
+From downloaded to local directory: ~OneDrive/03c_GoM_One/07_Genetic_Diversity
+
+# Write Python script to convert the MMSeqs cluster tsv file to a binary matrix of gene presence/absence per sample
+
+# 95% Nucleotide Sequence Similarity Clustering
+> python ../00c_Scripts/07b_MMSeqsTSV-to-BinaryMatrix.py -i 06_MMSeqCluster_95.tsv -o 06_MMSeqCluster_95_BinMat.tsv -k 06_MMSeqCluster_95_cluster-key.tsv 
+
+# 90% Nucleotide Sequence Similarity Clustering
+> python ../00c_Scripts/07b_MMSeqsTSV-to-BinaryMatrix.py -i 07_MMSeqCluster_90.tsv -o 07_MMSeqCluster_90_BinMat.tsv -k 07_MMSeqCluster_90_cluster-key.tsv
+
+# Now we need to write a python script to generate summaries etc from the binary matrix.
+# I created the binary matrix first because I think it is easier to read the binary matrix to get answers and plots.
+# First, I'm going to create a text file with lists of sample combinations to tests. 08_GoM_Test_Combinations.txt 
+# This list defines which samples to look for shared vs unshared genes between. One combination per line.
+# The script will also do all possible combinations of samples but this get crazy real fast.
+# We give the binary matrix file and the combinations file to the python script and voila.
+
+# 95% Nucleotide Sequence Similarity Clustering
+> python ../00c_Scripts/07c_binary_matrix_analysis.py -b 06_MMSeqCluster_95_BinMat.tsv -d 95_Cluster_Analysis -p 06_MMSeqCluster_95 -l 08_GoM_Test_Combinations.txt -k 06_MMSeqCluster_95_cluster-key.tsv
+
+# 90% Nucleotide Sequence Similarity Clustering
+> python ../00c_Scripts/07c_binary_matrix_analysis.py -b 07_MMSeqCluster_90_BinMat.tsv -d 90_Cluster_Anlaysis -p 07_MMSeqCluster_90 -l 08_GoM_Test_Combinations.txt -k 07_MMSeqCluster_90_cluster-key.tsv 
+
+# The script above generates a summary table for each combination and files listing the core, accessory and specific genes
+
+# Plot the results at end of step 08 together with amino acid clustering.
+
+
+#####################################
+## STEP 08: Functional Diversity   ################################
+#####################################
+
+How similar are the samples at the amino acid level?
+How much sequence is shared between sites or depths at 70% or 40% protein sequence similarity?
+Which Annotations/Functions of genes are present in simples, sites, or depths?
+What is the functional gene abundance between samples, sites, or depths?
+What fraction of genes can be annotated vs hypothetical or unknown function?
+
+In this step we will cluster predicted genes at the amino acid level
+using 70%, and 40% to assess how similar samles are at the
+protein/functional level. We will also annotate these gene clusters.
+
+# First concatenate prodigal faa files from all 
+# We already ran prodigal in step 07 and had it give us the nuc and prot sequences
+From: /storage/home/hcoda1/9/rconrad6/p-ktk3-0/03c_GoM_One/07_Genetic_Diversity
+> cat 03_Prodigal_FAA/* >> 03_Prodigal_FAA_ALLCAT.faa
+
+# setup for amino acid analysis
+From: /storage/home/hcoda1/9/rconrad6/p-ktk3-0/03c_GoM_One
+> mkdir 08_Functional_Diversity
+> cd 08_Functional_Diversity
+> mkdir 00_log
+
+# CD-HIT Clustering at 70% and 40% Amino Acid Sequence Similarity
+> qsub -v infile=../07_Genetic_Diversity/03_Prodigal_FAA_ALLCAT.faa ../00b_PBS/08a_MMSeqs2_Cluster_Prots.pbs
+
+# Start annotation for the representative sequences
+> qsub -v input=03_MMSeqCluster_70_Reps.faa,outdir=03_MMSeqCluster_70_Reps_Annotations,n=MMSeqCluster_70_Reps ../00b_PBS/08b_MicrobeAnnotator_MetaG.pbs 
+> qsub -v input=05_MMSeqCluster_40_Reps.faa,outdir=05_MMSeqCluster_40_Reps_Annotations,n=MMSeqCluster_40_Reps ../00b_PBS/08b_MicrobeAnnotator_MetaG.pbs 
+
+# then we use the python script from step 07 to analyze the results.
+# The only difference is clustering between nucleotide or amino acid sequence but the file formats are the same.
+
+# I did this next part locally because it is not computationally intensive.
+
+From downloaded to local directory: ~OneDrive/03c_GoM_One/08_Functional_Diversity
+
+# Convert the MMSeqs cluster tsv file to a binary matrix of gene presence/absence per sample
+
+# 70% Amino Acid Sequence Similarity Clustering
+> python ../00c_Scripts/07b_MMSeqsTSV-to-BinaryMatrix.py -i 02_MMSeqCluster_70.tsv -o 02_MMSeqCluster_70_BinMat.tsv -k 02_MMSeqCluster_70_cluster-key.tsv
+
+# 40% Amino Acid Sequence Similarity Clustering
+> python ../00c_Scripts/07b_MMSeqsTSV-to-BinaryMatrix.py -i 04_MMSeqCluster_40.tsv -o 04_MMSeqCluster_40_BinMat.tsv -k 04_MMSeqCluster_40_cluster-key.tsv
+
+# Now we need to write a python script to generate summaries etc from the binary matrix.
+# I created the binary matrix first because I think it is easier to read the binary matrix to get answers and plots.
+# Use the same combinations file from step 07. 08_GoM_Test_Combinations.txt 
+# This list defines which samples to look for shared vs unshared genes between. One combination per line.
+# The script will also do all possible combinations of samples but this get crazy real fast.
+# We give the binary matrix file and the combinations file to the python script and voila.
+
+# 70% Amino Acid Sequence Similarity Clustering
+> python ../00c_Scripts/07c_binary_matrix_analysis.py -b 02_MMSeqCluster_70_BinMat.tsv -d 70_Cluster_Analysis -p 02_MMSeqCluster_70 -l ../07_Genetic_Diversity/08_GoM_Test_Combinations.txt -k 02_MMSeqCluster_70_cluster-key.tsv 
+
+# 40% Amino Acid Sequence Similarity Clustering
+> python ../00c_Scripts/07c_binary_matrix_analysis.py -b 04_MMSeqCluster_40_BinMat.tsv -d 40_Cluster_Analysis -p 04_MMSeqCluster_40 -l ../07_Genetic_Diversity/08_GoM_Test_Combinations.txt -k 04_MMSeqCluster_40_cluster-key.tsv
+
+# Build plots together with results from Step 07
+
+#####################################
+## STEP 08b: Functional Abundance   ################################
+#####################################
+
+# Read mapping to each metagenome to calculate % reads mapping to assembly
+# Gene abundance from mapping to calculate differential functional abundance
+# We will use MagicBlast and my CoverageMagic script for this task.
+
+# Make the magic blast database for each metagenome assembly
+From: /storage/home/hcoda1/9/rconrad6/p-ktk3-0/03c_GoM_One/07_Genetic_Diversity/01_Metagenome_Assemblies
+> for f in *.fna; do makeblastdb -dbtype nucl -in $f -out $f -parse_seqids; done
+
+# Map each metagenome reads to the metagenome assembly
+# Let's setup our folders for the next few steps
+From: /storage/home/hcoda1/9/rconrad6/p-ktk3-0/03c_GoM_One/08_Functional_Diversity
+> mkdir 06_Read_Mapping 07_Functional_Abundance
+
+# This PBS script runs MagicBlast plus a best hit filter
+> for f in ../01a_Pipeline_Results/02_trim/*.fa; do n=`basename $f | cut -d. -f1`; qsub -v query=$f,ref=../07_Genetic_Diversity/01_Metagenome_Assemblies/${n}*fna,out=06_Read_Mapping,n=$n ../00b_PBS/07d_MagicBlast.pbs; done
+
+# View Histograms of read mapping results
+> for f in *blst; do printf "\n\nProcessing ${f}\n"; name=`basename $f | cut -d. -f1`; python ../../00c_Scripts/07d_MagicBlast_Hists.py -i $f -o $name; done
+
+# What percent of reads map to the metagenome assembly for each sample?
+
+# Double Check CoverageMagic Result with Bowtie2
+> for f in ../01a_Pipeline_Results/02_trim/*.fa; do n=`basename $f | cut -d. -f1`; qsub -v query=$f,ref=../07_Genetic_Diversity/01_Metagenome_Assemblies/${n}*fna,out=09_Bowtie2_Mapping/${n}-${n}-trim_ReadMap.sam,n=$n ../00b_PBS/xxf_Bowtie2.pbs; done
+
+# Now we can run coverage magic using metagenomes, prodigal gene fasta, and read mapping results
+# Generate Coverage for each gene in each metagenome
+> for f in 06_Read_Mapping/*blst; do name=`basename $f | cut -d- -f1`; qsub -v m=../01a_Pipeline_Results/02_trim/${name}.coupled.fa,g=../07_Genetic_Diversity/01_Metagenome_Assemblies/${name}-trim.LargeContigs.fna,b=${f},p=../07_Genetic_Diversity/03_Prodigal_FAA/${name}.faa,o=${name},odir=07_Gene_Abundance ../00b_PBS/07e_CoverageMagic.pbs; done
+
+magic blast finished. coverage magic finished.
+coverage magic reports TAD80.
+Need to normalize by sequencing effort.
+Simple normalization.
+
+we need to write script to link coverage to annotations.
+* Replace cluster name / rep seq name with annotation name
+* Make matrix of annotation name row, sample column, value equals abundance
+* can sum or average? duplicate rows.
+
+# Copy master annotation table out to working directory
+> cp *Annotations/*/annotation_results/*.annot .
+
+> python ../00c_Scripts/08a_Functional_Abundance_Analysis.py -m1 04_MMSeqCluster_40.tsv -m2 40_Cluster_Analysis/04_MMSeqCluster_40_012_Allplus_core.csv -a 05_MMSeqCluster_40_Reps.faa.annot -c 07_Gene_Abundance/GENEtad/ -o 06_Functional_Analysis -mc 10_MicrobeCensus/
+
+
+> python ../00c_Scripts/08b_Functional_Abundance_SigTesting.py -d1 06_Functional_Analysis_geneAbunance.tsv -d2 ../00a_DataTables/Sample_Temp_Salinity_Density.tsv -d3 continuous -v Density -o 09_SigTesting -e
+
+> python ../00c_Scripts/08b_Functional_Abundance_SigTesting.py -d1 06_Functional_Analysis_GeneNames.tsv -d2 ../00a_DataTables/Sample_Temp_Salinity_Density.tsv -d3 count -v Density -o 09_SigTesting -e
+
+### Recluster analysis to get shared genes for depth combinations
+> python ../00c_Scripts/07c_binary_matrix_analysis.py -b 04_MMSeqCluster_40_BinMat.tsv -d 11_AA40_Correlation_Clustering -p AA40_CorrelationTest_Clusters -l 08_GoM_Test_Combinations.txt -k 04_MMSeqCluster_40_cluster-key.tsv
+
+### Find genes with linear correlations
+
+# All samples
+> python ../00c_Scripts/08c_Functional_Abundance_SigTesting-longform.py -d1 06_Functional_Analysis_longform.tsv -d2 ../00a_DataTables/Sample_Temp_Salinity_Density.tsv -d3 11_AA40_Correlation_Clustering/02_Sample_Combo_Lists/All_Samples.txt -d4 11_AA40_Correlation_Clustering/01_Shared_Gene_Lists/AA40_CorrelationTest_Clusters_005_All_Samples_core.txt -e Density -r Abundance -o 11_AA40_Correlation_Clustering/03_All_Genes/All_Samples
+
+# Station 5 only
+> python ../00c_Scripts/08c_Functional_Abundance_SigTesting-longform.py -d1 06_Functional_Analysis_longform.tsv -d2 ../00a_DataTables/Sample_Temp_Salinity_Density.tsv -d3 11_AA40_Correlation_Clustering/02_Sample_Combo_Lists/Station_5_All.txt -d4 11_AA40_Correlation_Clustering/01_Shared_Gene_Lists/AA40_CorrelationTest_Clusters_001_Station_5_All_core.txt -e Density -r Abundance -o 11_AA40_Correlation_Clustering/04_Station_05/Station_05
+
+# All Genes (AGs) Surface to middle
+> python ../00c_Scripts/08c_Functional_Abundance_SigTesting-longform.py -d1 06_Functional_Analysis_longform.tsv -d2 ../00a_DataTables/Sample_Temp_Salinity_Density.tsv -d3 11_AA40_Correlation_Clustering/02_Sample_Combo_Lists/Shallow_Middle.txt -d4 11_AA40_Correlation_Clustering/01_Shared_Gene_Lists/AA40_CorrelationTest_Clusters_006_Shallow_Middle_core.txt -e Density -r Abundance -o 11_AA40_Correlation_Clustering/07_All_Genes_Surface-Middle/AGs
+
+# Station 05 Surface to middle
+> python ../00c_Scripts/08c_Functional_Abundance_SigTesting-longform.py -d1 06_Functional_Analysis_longform.tsv -d2 ../00a_DataTables/Sample_Temp_Salinity_Density.tsv -d3 11_AA40_Correlation_Clustering/02_Sample_Combo_Lists/Station_5_S-M.txt -d4 11_AA40_Correlation_Clustering/01_Shared_Gene_Lists/AA40_CorrelationTest_Clusters_002_Station_5_S-M_core.txt -e Density -r Abundance -o 11_AA40_Correlation_Clustering/05_Station05_Surface-Middle/St05SM
+
+# Station 05 Middle to Deep
+> python ../00c_Scripts/08c_Functional_Abundance_SigTesting-longform.py -d1 06_Functional_Analysis_longform.tsv -d2 ../00a_DataTables/Sample_Temp_Salinity_Density.tsv -d3 11_AA40_Correlation_Clustering/02_Sample_Combo_Lists/Station_5_M-D.txt -d4 11_AA40_Correlation_Clustering/01_Shared_Gene_Lists/AA40_CorrelationTest_Clusters_003_Station_5_M-D_core.txt -e Density -r Abundance -o 11_AA40_Correlation_Clustering/06_Station05_Middle-Deep/St05MD
+
+** Update metagenome excel sheet to include % of reads mapping back to the assembly
+
+# Build plots together with results from Step 07
+# collect results from 07 and 08 locally. Use the cluster Summary.tsv file output from the 07c_binary_matrix_analysis.py script and move to directory: 03c_GoM_One/08_Functional_Diversity/02_Genetic_Funcitonal_Diversity/
+
+# Rename files to :
+    * 95_nucleotide_Summary.tsv
+    * 90_nucleotide_Summary.tsv
+    * 70_aminoacid_Summary.tsv
+    * 40_aminoacid_Summary.tsv
+
+# From: 03c_GoM_One/08_Functional_Diversity/
+
+> python ../00c_Scripts/08d_Genetic_Function_Diversity_plots.py -i 02_Genetic_Funcitonal_Diversity/00_data/ -o 02_Genetic_Funcitonal_Diversity/gen_func_div_plots
+
+#####################################
+## STEP 09: MAG Abundance   ################################
+#####################################
+
+What fraction of metagenome reads map to the RepMAG database for each sample?
+What is the relative abundance of RepMAGs in each sample?
+
+We will use Prodigal and MagicBlast for this step.
+https://github.com/hyattpd/Prodigal
+https://ncbi.github.io/magicblast/
+
+# first we need to collect the RepMAGs and append the sample name and MAG IDs to the sequence names.
+From: /storage/home/hcoda1/9/rconrad6/p-ktk3-0/03c_GoM_One
+> cd 02_Derep_Classify/
+> mkdir 07_Renamed_RepMAGs
+> cp 02_Derep/representatives/* 07_Renamed_RepMAGs/
+# Append names. We can reuse the scripts from STEP 07.
+> for f in 07_Renamed_RepMAGs/*fna; do n=`basename $f | cut -d. -f1 | cut -d_ -f2-`; qsub -v input=$f,n=$n ../00b_PBS/07a_Append_Fasta_SeqNames.pbs; done
+
+# The Metagenome contigs are named like: >Sample_Name_scaffold_# . ex: >EN_21_scaffold_0
+# The representative MAGs (RepMAGs) are named like: >Sample_Name_method_Bin#_scaffold_# . ex: EN_21_norm_43_scaffold_171
+
+# Lets make a new directory and setup this analysis
+From: /storage/home/hcoda1/9/rconrad6/p-ktk3-0/03c_GoM_One
+> mkdir 09_MAG_Abundance
+> cd 09_MAG_Abundance
+> mkdir 00_log 01_RepMAGs 02_Read_Mapping
+
+# Concatenate all RepMAGs for competitive read mapping
+> cat ../02_Derep_Classify/07_Renamed_RepMAGs/*fna >> 01_RepMAGs/01_Concatenated_RepMAGs.fna
+# Make magicblast database
+> cd 01_RepMAGs
+> for f in *.fna; do makeblastdb -dbtype nucl -in $f -out $f -parse_seqids; done
+> cd ..
+# Run MagicBlast to map reads from each metagenome to the contatenated RepMAG database.
+> for f in ../01a_Pipeline_Results/02_trim/*.fa; do n=`basename $f | cut -d. -f1`; qsub -v query=$f,ref=01_RepMAGs/01_Concatenated_RepMAGs.fna,out=02_Read_Mapping,n=$n ../00b_PBS/07d_MagicBlast.pbs; done
+
+# View Histograms of read mapping results
+> for f in *blst; do printf "\n\nProcessing ${f}\n"; name=`basename $f | cut -d. -f1`; python ../../00c_Scripts/07d_MagicBlast_Hists.py -i $f -o $name; done
+
+# Split competitive blast read mapping
+From: /storage/coda1/p-ktk3/0/rconrad6/03c_GoM_One/09_MAG_Abundance
+> for f in 02_Read_Mapping/*blst; do name=`basename $f | cut -d- -f1`; mkdir 03_Split_Blasts/${name}; echo $f; python ../00c_Scripts/09b_Split_Competitive_Blast.py -i $f -o 03_Split_Blasts/${name}/${name}; done
+
+# Abundance of each MAG in each Sample
+> for f in 03_Split_Blasts/EN_2[34]/*; do name=`basename $f | cut -d- -f1`; if [ ! -d 04_MAG_Abundance/${name} ]; then mkdir 04_MAG_Abundance/${name}; fi; MAG=`basename $f | cut -d. -f1 | cut -d- -f2`; qsub -v m=../01a_Pipeline_Results/02_trim/${name}.coupled.fa,g=../02_Derep_Classify/07_Renamed_RepMAGs/${MAG}.LargeContigs.fna,b=${f},o=${name}-${MAG},odir=04_MAG_Abundance/${name},MAG=${MAG} ../00b_PBS/09e_CoverageMagic.pbs; done
+
+# Check successful completion
+> for d in *; do cnt=`echo ${d}/* | wc -w`; echo $d $cnt; done
+> for d in *; do cnt=`echo ${d}/GenomeSummary/* | wc -w`; echo $d $cnt; done
+
+# Follow up with check for completed runs to run any that failed during huge batch runs above
+> for f in 03_Split_Blasts/EN_*/*; do name=`basename $f | cut -d- -f1`; if [ ! -d 04_MAG_Abundance/${name} ]; then mkdir 04_MAG_Abundance/${name}; fi; MAG=`basename $f | cut -d. -f1 | cut -d- -f2`; if [ ! -s 04_MAG_Abundance/${name}/GenomeSummary/${name}-${MAG}_genome.tsv ]; then qsub -v m=../01a_Pipeline_Results/02_trim/${name}.coupled.fa,g=../02_Derep_Classify/07_Renamed_RepMAGs/${MAG}.LargeContigs.fna,b=${f},o=${name}-${MAG},odir=04_MAG_Abundance/${name},MAG=${MAG} ../00b_PBS/09e_CoverageMagic.pbs; fi; done
+
+# Run Microbe Census on Metagenomes so we can normalize by genome equivalents too
+> mkdir 06_MicrobeCensus
+> for f in ../01a_Pipeline_Results/02_trim/*.fa; do n=`basename $f | cut -d. -f1`; qsub -v r1=../01a_Pipeline_Results/02_trim/${n}.1.fastq.gz,r2=../01a_Pipeline_Results/02_trim/${n}.2.fastq.gz,out=06_MicrobeCensus/${n},n=${n} ../00b_PBS/09f_MicrobeCensus.pbs; done
+
+Genome Equivalents:
+EN_84 1657.50765541
+EN_83 1773.52494428
+EN_81 2065.69338766
+EN_23 2208.91441772
+EN_82 2041.81091144
+EN_51 2257.13487239
+EN_56 7981.90796492
+EN_21 1209.3003443
+EN_57 1369.28668306
+EN_59 1518.79797268
+EN_53 1659.30988187
+EN_52 2338.24878029
+EN_85 2146.0070797
+EN_22 2292.56444831
+EN_54 1407.07767
+EN_55 1152.33775508
+EN_25 1328.15966313
+EN_58 1241.31523937
+EN_24 1512.40332562
+
+# Need to combine all the Genome Summary Results with the MicrobeCensus Results
+# Working directory: /storage/coda1/p-ktk3/0/rconrad6/03c_GoM_One/09_MAG_Abundance/
+> cd 04_MAG_Abundance
+> mkdir 00_GenomeSummaries
+> cp */GenomeSummary/* 00_GenomeSummaries/
+> python ../../00c_Scripts/09c_CoverageMagic_CombineGenomeStats.py -gtd 00_GenomeSummaries/ -out GoM_MAGs -gq ../06_MicrobeCensus
+
+> python ../00c_Scripts/09d_MAG_Biogeography.py -i GoM_MAGs_gqed.tsv -o GoM_MAGs_gqed
+> python ../00c_Scripts/09d_MAG_Biogeography.py -i GoM_MAGs_breadths.tsv -o GoM_MAGs_breadths
+> python ../00c_Scripts/09d_MAG_Biogeography.py -i GoM_MAGs_anirs.tsv -o GoM_MAGs_anirs
+> python ../00c_Scripts/09d_MAG_Biogeography.py -i GoM_MAGs_rels.tsv -o GoM_MAGs_rels
+> python ../00c_Scripts/09d_MAG_Biogeography.py -i GoM_MAGs_tads.tsv -o GoM_MAGs_tads
+
+I cleaned up the GoM MAGs gqed file in adobe illustrator. Shows top 50 MAGs with the greatest cumulative abundance (abundance summed across all samples).
+
+#####################################
+## STEP 10: Metagenome assembly gene catalog EGGNOG annotation  ################################
+#####################################
+
+I decided to go back and annotate every predicted for each metagenome with eggnog and then use a new gitrepo I put together to plot the results. https://github.com/rotheconrad/EggNog_Annotation_Plots
+
+diamond version 2.0.15
+emapper-2.1.9
+MMseqs2 version found: 13.45111
+eggNOG DB version: 5.0.2
+
+from: 03b_GoM/01d_Shared_Gene_Content/
+
+mkdir 04b_Eggnog_Annotation
+* PACE moved from qsub to sbatch during this project
+
+## Run Log:
+## sbatch --export faa=,oName=,oDir= 04a_eggnog.sbatch
+## sbatch --export faa=02_Metagenome_Genes/EN_21.faa,oName=EN_21,oDir=04b_Eggnog_Annotation 04a_eggnog.sbatch
+## sbatch -o 00a_log/EN_21.out -e 00a_log/EN_21.err --export faa=02_Metagenome_Genes/EN_21.faa,oName=EN_21,oDir=04b_Eggnog_Annotation 04a_eggnog.sbatch
+## sbatch -o 00a_log/EN_22.out -e 00a_log/EN_22.err --export faa=02_Metagenome_Genes/EN_22.faa,oName=EN_22,oDir=04b_Eggnog_Annotation 04a_eggnog.sbatch
+## sbatch -o 00a_log/EN_23.out -e 00a_log/EN_23.err --export faa=02_Metagenome_Genes/EN_23.faa,oName=EN_23,oDir=04b_Eggnog_Annotation 04a_eggnog.sbatch
+## sbatch -o 00a_log/EN_24.out -e 00a_log/EN_24.err --export faa=02_Metagenome_Genes/EN_24.faa,oName=EN_24,oDir=04b_Eggnog_Annotation 04a_eggnog.sbatch
+## sbatch -o 00a_log/EN_25.out -e 00a_log/EN_25.err --export faa=02_Metagenome_Genes/EN_25.faa,oName=EN_25,oDir=04b_Eggnog_Annotation 04a_eggnog.sbatch
+## sbatch -o 00a_log/EN_51.out -e 00a_log/EN_51.err --export faa=02_Metagenome_Genes/EN_51.faa,oName=EN_51,oDir=04b_Eggnog_Annotation 04a_eggnog.sbatch
+## sbatch -o 00a_log/EN_52.out -e 00a_log/EN_52.err --export faa=02_Metagenome_Genes/EN_52.faa,oName=EN_52,oDir=04b_Eggnog_Annotation 04a_eggnog.sbatch
+## sbatch -o 00a_log/EN_53.out -e 00a_log/EN_53.err --export faa=02_Metagenome_Genes/EN_53.faa,oName=EN_53,oDir=04b_Eggnog_Annotation 04a_eggnog.sbatch
+## sbatch -o 00a_log/EN_54.out -e 00a_log/EN_54.err --export faa=02_Metagenome_Genes/EN_54.faa,oName=EN_54,oDir=04b_Eggnog_Annotation 04a_eggnog.sbatch
+## sbatch -o 00a_log/EN_55.out -e 00a_log/EN_55.err --export faa=02_Metagenome_Genes/EN_55.faa,oName=EN_55,oDir=04b_Eggnog_Annotation 04a_eggnog.sbatch
+## sbatch -o 00a_log/EN_56.out -e 00a_log/EN_56.err --export faa=02_Metagenome_Genes/EN_56.faa,oName=EN_56,oDir=04b_Eggnog_Annotation 04a_eggnog.sbatch
+## sbatch -o 00a_log/EN_57.out -e 00a_log/EN_57.err --export faa=02_Metagenome_Genes/EN_57.faa,oName=EN_57,oDir=04b_Eggnog_Annotation 04a_eggnog.sbatch
+## sbatch -o 00a_log/EN_58.out -e 00a_log/EN_58.err --export faa=02_Metagenome_Genes/EN_58.faa,oName=EN_58,oDir=04b_Eggnog_Annotation 04a_eggnog.sbatch
+## sbatch -o 00a_log/EN_59.out -e 00a_log/EN_59.err --export faa=02_Metagenome_Genes/EN_59.faa,oName=EN_59,oDir=04b_Eggnog_Annotation 04a_eggnog.sbatch
+## sbatch -o 00a_log/EN_81.out -e 00a_log/EN_81.err --export faa=02_Metagenome_Genes/EN_81.faa,oName=EN_81,oDir=04b_Eggnog_Annotation 04a_eggnog.sbatch
+## sbatch -o 00a_log/EN_82.out -e 00a_log/EN_82.err --export faa=02_Metagenome_Genes/EN_82.faa,oName=EN_82,oDir=04b_Eggnog_Annotation 04a_eggnog.sbatch
+## sbatch -o 00a_log/EN_83.out -e 00a_log/EN_83.err --export faa=02_Metagenome_Genes/EN_83.faa,oName=EN_83,oDir=04b_Eggnog_Annotation 04a_eggnog.sbatch
+## sbatch -o 00a_log/EN_84.out -e 00a_log/EN_84.err --export faa=02_Metagenome_Genes/EN_84.faa,oName=EN_84,oDir=04b_Eggnog_Annotation 04a_eggnog.sbatch
+## sbatch -o 00a_log/EN_85.out -e 00a_log/EN_85.err --export faa=02_Metagenome_Genes/EN_85.faa,oName=EN_85,oDir=04b_Eggnog_Annotation 04a_eggnog.sbatch
+
+Download emapper.annotations files locally.
+
+Use EggNog_Annotation_Plots scripts to build plots
+
+1) prepare metadata
+> for f in 01a_annotations/*; do n=`basename $f | cut -d. -f1`; python 00c_Scripts/create_metadata.py -i $f -n $n -o 01b_metadata/${n}_metadata.tsv; done
+> cat 01b_metadata/* > 01c_GoM_GeneCatalog_meta.tsv
+
+2) prepare annotations
+> cat 01a_annotations/* > 01d_GoM_GeneCatalog_annotations.tsv
+
+3) build plot
+> python 00c_Scripts/annotation_bar_plot.py -a 01d_GoM_GeneCatalog_annotations.tsv -m 01c_GoM_GeneCatalog_meta.tsv -o 02_GoM_GeneCatalog
+
+From: /storage/scratch1/9/rconrad6/03b_GoM/01d_Shared_Gene_Content
+Predicted Gene Counts:
+> for f in 02_Metagenome_Genes/*faa; do n=`basename $f | cut -d. -f1`; echo $n `grep -c '>' $f`; done
+EN_21 234168
+EN_22 261238
+EN_23 290528
+EN_24 168187
+EN_25 137198
+EN_51 225959
+EN_52 235162
+EN_53 238860
+EN_54 161330
+EN_55 123329
+EN_56 657518
+EN_57 186646
+EN_58 192469
+EN_59 202406
+EN_81 199341
+EN_82 192970
+EN_83 233923
+EN_84 52799
+EN_85 180780
+
+Annotated Gene Counts:
+> for f in 04b_Eggnog_Annotation/*annotations; do n=`basename $f | cut -d. -f1`; echo $n `wc -l $f`; done
+EN_21 144224 04b_Eggnog_Annotation/EN_21.emapper.annotations
+EN_22 213035 04b_Eggnog_Annotation/EN_22.emapper.annotations
+EN_23 202866 04b_Eggnog_Annotation/EN_23.emapper.annotations
+EN_24 133715 04b_Eggnog_Annotation/EN_24.emapper.annotations
+EN_25 112313 04b_Eggnog_Annotation/EN_25.emapper.annotations
+EN_51 188244 04b_Eggnog_Annotation/EN_51.emapper.annotations
+EN_52 186632 04b_Eggnog_Annotation/EN_52.emapper.annotations
+EN_53 166698 04b_Eggnog_Annotation/EN_53.emapper.annotations
+EN_54 128563 04b_Eggnog_Annotation/EN_54.emapper.annotations
+EN_55 100517 04b_Eggnog_Annotation/EN_55.emapper.annotations
+EN_56 488611 04b_Eggnog_Annotation/EN_56.emapper.annotations
+EN_57 152424 04b_Eggnog_Annotation/EN_57.emapper.annotations
+EN_58 153268 04b_Eggnog_Annotation/EN_58.emapper.annotations
+EN_59 162295 04b_Eggnog_Annotation/EN_59.emapper.annotations
+EN_81 163560 04b_Eggnog_Annotation/EN_81.emapper.annotations
+EN_82 158823 04b_Eggnog_Annotation/EN_82.emapper.annotations
+EN_83 163246 04b_Eggnog_Annotation/EN_83.emapper.annotations
+EN_84 41673 04b_Eggnog_Annotation/EN_84.emapper.annotations
+EN_85 146324 04b_Eggnog_Annotation/EN_85.emapper.annotations
+
+
+#####################################
+## STEP XX: DEFAULT   ################################
+#####################################

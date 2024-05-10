@@ -1,0 +1,19 @@
+#PBS -N RenameFastq
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=1gb
+#PBS -l walltime=2:00:00
+#PBS -q inferno     
+#PBS -A GT-ktk3-CODA20
+#PBS -o 00_log/rename_fastq_${n}.out
+#PBS -e 00_log/rename_fastq_${n}.err
+
+cd $PBS_O_WORKDIR
+
+rename=/storage/coda1/p-ktk3/0/rconrad6/03c_GoM_One/00c_Scripts/01_Fastq_rename_sequences.py
+
+python $rename -i $input -p ${n} -r "${r}"
+
+## Run log:
+## for f in *fastq; do n=`basename $f | cut -d_ -f1-2`; r=`basename $f | cut -dd -f2 | cut -d. -f1`; qsub -v n=$n,r=$r,input=$f ../00b_PBS/01_Rename_Fastq_Sequences.pbs; done
+
+## DON'T FORGET TO MAKE LOG DIRECTORY

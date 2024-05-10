@@ -1,0 +1,25 @@
+#PBS -N Kraken
+#PBS -l nodes=1:ppn=2
+#PBS -l mem=60gb
+#PBS -l walltime=1:00:00:00
+#PBS -q inferno     
+#PBS -A GT-ktk3-CODA20
+#PBS -o 00_log/06a_Kraken_${n}.out
+#PBS -e 00_log/06a_Kraken_${n}.err
+
+# This script builds the gene clusters
+cd $PBS_O_WORKDIR
+
+if [ ! -d 01_Kraken2 ]; then mkdir 01_Kraken2; fi
+if [ ! -d 02_Kraken2_report ]; then mkdir 02_Kraken2_report; fi
+
+source activate /storage/home/hcoda1/9/rconrad6/p-ktk3-0/apps/Kraken2
+
+DBNAME="/storage/home/hcoda1/9/rconrad6/p-ktk3-0/apps/Kraken2/DBases/PlusPF"
+
+kraken2 --db $DBNAME --output 01_Kraken2/${n}.kraken --report 02_Kraken2_report/${n}.kreport --threads 2 $INPUT
+
+## Run Log:
+## qsub -v INPUT=,OUTDIR=,n= ../00b_PBS/05h_Kraken.pbs
+## for f in ../01a_Pipeline_Results/02_trim/*fa; do n=`basename $f | cut -d. -f1`; echo $n; qsub -v INPUT=$f,n=$n ../00b_PBS/06a_Kraken.pbs; done
+## for f in ../01a_Pipeline_Results/02_trim/*fa; do n=`basename $f | cut -d. -f1`; if [ ! -s 02_Kraken2_report/${n}.kreport ]; then echo $n; qsub -v INPUT=$f,n=$n ../00b_PBS/06a_Kraken.pbs; fi; done

@@ -1,0 +1,18 @@
+#PBS -N MicrobeCensus
+#PBS -l nodes=1:ppn=10
+#PBS -l mem=100gb
+#PBS -l walltime=12:00:00
+#PBS -q inferno     
+#PBS -A GT-ktk3-CODA20
+#PBS -o 00_log/09f_MicrobeCensus_${n}.out
+#PBS -e 00_log/09f_MicrobeCensus_${n}.err
+
+cd $PBS_O_WORKDIR
+
+source activate /storage/coda1/p-ktk3/0/rconrad6/apps/MicrobeCensus
+
+run_microbe_census.py -n 10000000 -t 10 $r1,$r2 $out
+
+## Run Log
+## qsub -v r1=,r2=,out= ../00b_PBS/09f_MicrobeCensus.pbs
+## for f in ../01a_Pipeline_Results/02_trim/*.fa; do n=`basename $f | cut -d. -f1`; qsub -v r1=../01a_Pipeline_Results/02_trim/${n}.1.fastq.gz,r2=../01a_Pipeline_Results/02_trim/${n}.2.fastq.gz,out=06_MicrobeCensus/${n},n=${n} ../00b_PBS/09f_MicrobeCensus.pbs; done

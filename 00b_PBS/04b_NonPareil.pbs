@@ -1,0 +1,19 @@
+#PBS -N NonPareil
+#PBS -l nodes=1:ppn=20
+#PBS -l mem=20gb
+#PBS -l walltime=7:00:00:00
+#PBS -q inferno     
+#PBS -A GT-ktk3-CODA20
+#PBS -o 00_log/04b_NonPareil_${name}.out
+#PBS -e 00_log/04b_NonPareil_${name}.err
+
+# Change to working directory
+cd $PBS_O_WORKDIR
+
+# kmer - recommended to have fastq for error correction step
+# seems to run with fasta files. just skips error correction
+nonpareil -s $input -T kmer -f fasta -b ${output}/${name} -X 100000 -R 20000 -t 20
+
+## Run Log ##
+## qsub -v input=Read1.fasta,output=path/to/prefix,name=sampleID 00b_PBS/05a_NonPareil.pbs
+## for f in 01_Read1_fasta/*fasta; do n=`basename $f | cut -d_ -f1-2`; qsub -v input=$f,output=02_NonPareil,name=$n ../00b_PBS/04b_NonPareil.pbs; done

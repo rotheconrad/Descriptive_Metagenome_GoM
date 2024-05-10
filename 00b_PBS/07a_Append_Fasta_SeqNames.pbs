@@ -1,0 +1,21 @@
+#PBS -N AppendFastaName
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=1gb
+#PBS -l walltime=2:00:00
+#PBS -q inferno     
+#PBS -A GT-ktk3-CODA20
+#PBS -o 00_log/07a_AppendFastaName_${n}.out
+#PBS -e 00_log/07a_AppendFastaName_${n}.err
+
+cd $PBS_O_WORKDIR
+
+append=/storage/home/hcoda1/9/rconrad6/p-ktk3-0/03c_GoM_One/00c_Scripts/07a_Append_Fasta_SeqNames.py
+
+python $append -i $input -s $n
+
+## Run log:
+## qsub -v input=,n= ../00b_PBS/07a_Rename_Fasta_Sequences.pbs
+## for f in 01_Metagenome_Assemblies/*; do n=`basename $f | cut -d- -f1`; qsub -v input=$f,n=$n ../00b_PBS/07a_Rename_Fasta_Sequences.pbs; done
+## for f in 07_Renamed_RepMAGs/*fna; do n=`basename $f | cut -d. -f1 | cut -d_ -f2-`; qsub -v input=$f,n=$n ../00b_PBS/07a_Append_Fasta_SeqNames.pbs; done
+
+## DON'T FORGET TO MAKE LOG DIRECTORY

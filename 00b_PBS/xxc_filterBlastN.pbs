@@ -1,0 +1,21 @@
+#PBS -N filterBlastN
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=20gb
+#PBS -l walltime=6:00:00
+#PBS -q inferno     
+#PBS -A GT-ktk3-CODA20
+#PBS -o 00_log/06c_filterBlastN_${name}.out
+#PBS -e 00_log/06c_filterBlastN_${name}.err
+
+script="/storage/coda1/p-ktk3/0/rconrad6/03b_GoM/00c_Scripts/06c_BlastN_Filter.py"
+
+# Change to working directory
+cd $PBS_O_WORKDIR
+
+# Run Filter
+python ${script} -i ${blst}
+
+## Run Log ##
+## qsub -v blst=tabblastfile.blast,name=sample_name 00b_PBS/06c_filterBlastN.pbs
+## for f in 05_BlastN/*blast; do n=`basename $f | cut -d. -f1`; qsub -v blst=$f,name=$n ../00b_PBS/06c_filterBlastN.pbs; sleep 30; done
+

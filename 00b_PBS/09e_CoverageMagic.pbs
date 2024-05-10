@@ -1,0 +1,57 @@
+#PBS -N CovMagBas
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=1gb
+#PBS -l walltime=1:00:00
+#PBS -q inferno     
+#PBS -A GT-ktk3-CODA20
+#PBS -o 00_log/08e_CovMag_${o}.out
+#PBS -e 00_log/08e_CovMag_${o}.err
+
+cd $PBS_O_WORKDIR
+
+CovMag=/storage/coda1/p-ktk3/0/rconrad6/03c_GoM_One/00c_Scripts/07c_MagicBlast_CoverageMagic_Basic.py
+
+# Check for output directories
+if [ ! -d $odir ]; then mkdir $odir; fi
+if [ ! -d ${odir}/GenomeSummary ];
+  then
+	cd ${odir}
+	mkdir GenomeSummary CONTIGtad CONTIGanir CONTIGbreadth
+	cd ..
+fi
+
+# Check if completed previously
+if [ ! -s ${odir}/ANIcontig/${out}_contig_ani.tsv ]
+  then
+	# With prodigal genes
+	# python $CovMag -m $m -g $g -b $b -p $p -o $o
+	# Without genes
+	genome="$g"
+	python $CovMag -m "$m" -g $genome -b "$b" -o "$o"
+fi
+
+# Check if finished and move output files for organization
+if [ -s ${o}_genome.tsv ]
+  then
+
+	mv ${o}_genome.tsv ${odir}/GenomeSummary/${o}_genome.tsv
+	mv ${o}_contig_tad.tsv ${odir}/CONTIGtad/${o}_contig_tad.tsv
+	mv ${o}_contig_anir.tsv ${odir}/CONTIGanir/${o}_contig_anir.tsv
+	mv ${o}_contig_breadth.tsv ${odir}/CONTIGbreadth/${o}_contig_breadth.tsv
+
+
+fi
+
+## Check paths and names for moved output files
+printf '\n\n'
+echo Outputs:
+echo ${odir}/GenomeSummary/${o}_genome.tsv
+echo ${odir}/CONTIGtad/${o}_contig_tad.tsv
+echo ${odir}/CONTIGani/${o}_contig_ani.tsv
+echo ${odir}/CONTIGbreadth/${o}_contig_breadth.tsv
+printf '\n\n'
+echo "CoverageMagic PBS End."
+
+## Run Log:
+## qsub -v m=metagenome.fa,g=assembly.fna,b=ReadMap.fltrdBstHts.blst,p=prodigal.faa,o=output_name,odir=output_dir ../00b_PBS/07e_CoverageMagic.pbs
+## for f in 03_Split_Blasts/EN_21/*; do name=`basename $f | cut -d- -f1`; if [ ! -d 04_MAG_Abundance/${name} ]; then mkdir 04_MAG_Abundance/${name}; fi; MAG=`basename $f | cut -d_ -f2-5 | cut -d- -f2`; qsub -v m=../01a_Pipeline_Results/02_trim/${name}.coupled.fa,g=../02_Derep_Classify/07_Renamed_RepMAGs/*_${MAG}.LargeContigs.fna,b=${f},o=${name}-${MAG},odir=04_MAG_Abundance/${name},MAG=${MAG} ../00b_PBS/09e_CoverageMagic.pbs; done

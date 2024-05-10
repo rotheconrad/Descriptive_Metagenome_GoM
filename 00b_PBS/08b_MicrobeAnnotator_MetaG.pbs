@@ -1,0 +1,27 @@
+#PBS -N MicrobeAnnotorDB
+#PBS -l nodes=1:ppn=20
+#PBS -l mem=300gb
+#PBS -l walltime=7:00:00:00
+#PBS -q inferno     
+#PBS -A GT-ktk3-CODA20
+#PBS -o 00_log/MicrobeAnnotatorV2_${n}.out
+#PBS -e 00_log/MicrobeAnnotatorV2_${n}.err
+
+# purge any active modules
+module purge
+# change to the working directory
+cd $PBS_O_WORKDIR
+# activate the microbeannotatorv2 conda env
+source activate /storage/home/hcoda1/9/rconrad6/p-ktk3-0/apps/microbeannotatorv2
+# define the path to the microbe annotator database
+database=/storage/home/hcoda1/9/rconrad6/p-ktk3-0/apps/microbeannotatorv2/MicrobeAnnotator_DB
+# make outdir if it does not exist
+if [ ! -d $outdir ]; then mkdir $outdir; fi
+# run microbe annotator
+microbeannotator -i ${input} -o ${outdir}/${n} -m diamond -d ${database} -t 20 --cluster "both"
+
+## Run Log:
+## qsub -v input=,outdir=,n= ../00_PBS/08b_MicrobeAnnotator_MetaG.pbs
+## qsub -v input=03_MMSeqCluster_70_Reps.faa,outdir=03_MMSeqCluster_70_Reps_Annotations,n=MMSeqCluster_70_Reps ../00b_PBS/08b_MicrobeAnnotator_MetaG.pbs 
+## qsub -v input=05_MMSeqCluster_40_Reps.faa,outdir=05_MMSeqCluster_40_Reps_Annotations,n=MMSeqCluster_40_Reps ../00b_PBS/08b_MicrobeAnnotator_MetaG.pbs
+

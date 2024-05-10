@@ -1,0 +1,22 @@
+#PBS -N Prodigal_MetaG
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=8gb
+#PBS -l walltime=2:00:00
+#PBS -q inferno     
+#PBS -A GT-ktk3-CODA20
+#PBS -o 00_log/07b_Prodigal_${name}.out
+#PBS -e 00_log/07b_Prodigal_${name}.err
+
+# Change to working directory
+cd $PBS_O_WORKDIR
+
+if [ ! -d 02_Prodigal_FNA ]
+  then 
+	mkdir 02_Prodigal_FNA 03_Prodigal_FAA 04_Prodigal_GFF
+fi
+
+prodigal -a 03_Prodigal_FAA/${name}.faa -d 02_Prodigal_FNA/${name}.fna -i $infile -o 04_Prodigal_GFF/${name}.gff -f gff -p meta
+
+## Run Log ##
+## qsub -v infile=,name= ../00b_PBS/05d_Prodigal.pbs
+## for f in 01_Metagenome_Assemblies/*fna; do name=`basename $f | cut -d- -f1`; qsub -v infile=$f,name=$name ../00b_PBS/07b_Prodigal_Metagenome.pbs; done

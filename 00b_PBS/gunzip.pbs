@@ -1,0 +1,18 @@
+#PBS -N gunzip
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=1gb
+#PBS -l walltime=1:00:00
+#PBS -q inferno     
+#PBS -A GT-ktk3-CODA20
+#PBS -o 00_log/gunzip_${n}.out
+#PBS -e 00_log/gunzip_${n}.err
+
+cd $PBS_O_WORKDIR
+
+gunzip $f
+
+## Run Log
+## for f in dir/*.gz; do n=`basename $f | cut -d. -f1`; qsub -v f=$f,n=$n 00b_PBS/gunzip.pbs; done
+## for f in *.gz; do n=`basename $f | cut -d. -f1`; qsub -v f=$f,n=$n ../00b_PBS/gunzip.pbs; done
+
+## DON'T FORGET TO MAKE LOG DIRECTORY

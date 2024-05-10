@@ -1,0 +1,39 @@
+#PBS -N MagicBlast
+#PBS -l nodes=1:ppn=4
+#PBS -l mem=100gb
+#PBS -l walltime=24:00:00
+#PBS -q inferno     
+#PBS -A GT-ktk3-CODA20
+#PBS -o 00_log/07d_magicblast_${n}.out
+#PBS -e 00_log/07d_magicblast_${n}.err
+
+# Don't forget to make blast dbs for the genomes
+# Confirm the use of MagicBlast makeblastdb over Blast+ makeblastdb
+# which makeblastdb
+# for f in *.fna; do makeblastdb -dbtype nucl -in $f -out $f -parse_seqids; done
+
+cd $PBS_O_WORKDIR
+
+filter=/storage/home/hcoda1/9/rconrad6/p-ktk3-0/03c_GoM_One/00c_Scripts/07b_MagicBlast_ShortRead_Filter.py
+
+r=`basename $ref | cut -d. -f1`
+
+if [ ! -s ${out}/${n}-${r}_ReadMap.blast ]
+  then
+	magicblast -query $query -db $ref -infmt fasta -paired -num_threads 4 -no_unaligned -splice F -outfmt tabular -parse_deflines T -out ${out}/${n}-${r}_ReadMap.blast
+fi
+
+if [ ! -s ${out}/${n}-${r}_ReadMap.fltrdBstHts.blst ]
+  then
+	python ${filter} -i ${out}/${n}-${r}_ReadMap.blast -pml 0.9 -rl 70
+fi
+
+## Run Notes:
+## qsub -v query=,ref=,out=,n= ../00b_PBS/07d_MagicBlast.pbs
+
+# Other Flags available:
+#  -perc_identity <Real, 0..100>
+#  -score <String> Cutoff score for accepting alignments. Can be expressed as a number or a function of read length: L,b,a for a * length + b. Default = `20'
+#  -paired Input query sequences are paired
+#  -no_query_id_trim Do not trim '.1', '/1', '.2', or '/2' at the end of read ids for SAM format and paired runs
+#  -no_discordant Suppress discordant alignments for paired reads

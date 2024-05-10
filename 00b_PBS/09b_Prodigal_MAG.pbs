@@ -1,0 +1,16 @@
+#PBS -N Prodigal_MAGs
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=8gb
+#PBS -l walltime=1:00:00
+#PBS -q inferno     
+#PBS -A GT-ktk3-CODA20
+#PBS -o 00_log/09b_Prodigal_${name}.out
+#PBS -e 00_log/09b_Prodigal_${name}.err
+
+# Change to working directory
+cd $PBS_O_WORKDIR
+
+prodigal -a ${outdir}/${name}.faa -d ${outdir}/${name}.fna -i $infile -o ${outdir}/${name}.gff -f gff
+
+## Run Log ##
+## qsub -v infile=,outdir=,name= ../00b_PBS/05d_Prodigal.pbs

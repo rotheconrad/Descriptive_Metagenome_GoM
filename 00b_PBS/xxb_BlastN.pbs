@@ -1,0 +1,29 @@
+#PBS -N BlastN
+#PBS -l nodes=1:ppn=20
+#PBS -l mem=50gb
+#PBS -l walltime=7:00:00:00
+#PBS -q inferno     
+#PBS -A GT-ktk3-CODA20
+#PBS -o 00_log/06a_BlastN_${name}.out
+#PBS -e 00_log/06a_BlastN_${name}.err
+
+# Change to working directory
+cd $PBS_O_WORKDIR
+
+# Load Modules Needed
+module load blast-plus/2.10.1
+
+# Make Blast DB
+if [ ! -s ${ref}.ndb ]
+  then
+      	makeblastdb -dbtype nucl -in $ref
+fi
+
+# Run Blast
+blastn -task 'blastn' -evalue 0.01 -num_threads 20 -max_target_seqs 10 \
+-db ${ref} -query ${qry} -out ${out} -perc_identity 70 -outfmt \
+'6 qseqid sseqid pident length mismatch gapopen qstart qend sstart send evalue bitscore qlen slen'
+
+## Run Log ##
+## qsub -v ref=MAGs.fna,qry=metagenome.fa,out=out.blast,name=metagenome 00b_PBS/06a_BlastN.pbs
+## for f in ../00e_TRIMMED_READS_FASTA/*fasta; do n=`basename $f | cut -d. -f1`; qsub -v ref=04_Concatenated_Renamed_Derepped_MAGs.fna,qry=$f,out=05_BlastN/Competitive-${n}.blast,name=$n ../00b_PBS/06b_BlastN.pbs; done

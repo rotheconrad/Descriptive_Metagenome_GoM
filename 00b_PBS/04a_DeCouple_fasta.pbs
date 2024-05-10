@@ -1,0 +1,18 @@
+#PBS -N DeCouple
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=1gb
+#PBS -l walltime=2:00:00
+#PBS -q inferno     
+#PBS -A GT-ktk3-CODA20
+#PBS -o 00_log/04a_DeCouple_${n}.out
+#PBS -e 00_log/04a_DeCouple_${n}.err
+
+# Change to working directory
+cd $PBS_O_WORKDIR
+
+decouple="/storage/home/hcoda1/9/rconrad6/p-ktk3-0/03c_GoM_One/00c_Scripts/04a_Fasta_DeCouple_Reads.py"
+
+python $decouple -i $input -o ${outdir}/${n}
+
+## Run Log ##
+## qsub -v input=Coupled.fasta,outdir=OutputDirectory,n=sampleID 00b_PBS/04a_DeCouple_fasta.pbs
