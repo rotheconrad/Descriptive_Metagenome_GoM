@@ -1,7 +1,7 @@
 These are the notes for the descriptive analysis manuscript for the GoM Samples.
 Preparation begun Dec 2nd 2021 by Roth Conrad
 
-We have 19 samples collected on an Endeavor cruise in the Gulf of Mexico (GoM) in 2014?.
+We have 19 samples collected during the R/V Endeavour cruise in the Gulf of Mexico (GoM) in 29 May 2012.
 The samples are depth stratified from three stations.
 Two stations have 5 depth samples and one station samples much deeper with 9.
 Staions 2 and 8 are closer to the coast with 5 depths sampled each.
@@ -363,11 +363,11 @@ From: /storage/home/hcoda1/9/rconrad6/p-ktk3-0/03c_GoM_One
 # first we need to collect the metagenomes and append the sample names to the sequence names
 > mkdir 00_log 01_Metagenome_Assemblies
 > cp ../01a_Pipeline_Results/04_asm/*trim*fna 01_Metagenome_Assemblies/
-> for f in 01_Metagenome_Assemblies/*; do n=`basename $f | cut -d- -f1`; qsub -v input=$f,n=$n ../00b_PBS/07a_Append_Fasta_SeqNames.p$
+> for f in 01_Metagenome_Assemblies/*; do n=`basename $f | cut -d- -f1`; qsub -v input=$f,n=$n ../00b_PBS/07a_Append_Fasta_SeqNames.pbs
 
 # Now we need to predict genes with prodigal
 > mkdir 02_Prodigal_FNA 03_Prodigal_FAA 04_Prodigal_GFF
-> for f in 01_Metagenome_Assemblies/*fna; do name=`basename $f | cut -d- -f1`; qsub -v infile=$f,name=$name ../00b_PBS/07b_Prodigal_Me$
+> for f in 01_Metagenome_Assemblies/*fna; do name=`basename $f | cut -d- -f1`; qsub -v infile=$f,name=$name ../00b_PBS/07b_Prodigal_Metagenome.pbs
 
 # Now we concatenate all nucleotide fastas together (FNA)
 > cat 02_Prodigal_FNA/* >> 02_Prodigal_FNA_ALLCAT.fna
@@ -653,7 +653,9 @@ I cleaned up the GoM MAGs gqed file in adobe illustrator. Shows top 50 MAGs with
 ## STEP 10: Metagenome assembly gene catalog EGGNOG annotation  ################################
 #####################################
 
-I decided to go back and annotate every predicted for each metagenome with eggnog and then use a new gitrepo I put together to plot the results. https://github.com/rotheconrad/EggNog_Annotation_Plots
+I decided to go back and annotate every predicted CDS for each metagenome with eggnog and then use a quick modification of a new gitrepo I put together to plot the results. https://github.com/rotheconrad/EggNog_Annotation_Plots
+
+During this project PACE at GA Tech switched from the moab/torque qsub scheduler to the slurm sbatch system.
 
 diamond version 2.0.15
 emapper-2.1.9
@@ -693,14 +695,14 @@ Download emapper.annotations files locally.
 Use EggNog_Annotation_Plots scripts to build plots
 
 1) prepare metadata
-> for f in 01a_annotations/*; do n=`basename $f | cut -d. -f1`; python 00c_Scripts/create_metadata.py -i $f -n $n -o 01b_metadata/${n}_metadata.tsv; done
+> for f in 01a_annotations/*; do n=`basename $f | cut -d. -f1`; python 00c_Scripts/10a_create_metadata.py -i $f -n $n -o 01b_metadata/${n}_metadata.tsv; done
 > cat 01b_metadata/* > 01c_GoM_GeneCatalog_meta.tsv
 
 2) prepare annotations
 > cat 01a_annotations/* > 01d_GoM_GeneCatalog_annotations.tsv
 
 3) build plot
-> python 00c_Scripts/annotation_bar_plot.py -a 01d_GoM_GeneCatalog_annotations.tsv -m 01c_GoM_GeneCatalog_meta.tsv -o 02_GoM_GeneCatalog
+> python 00c_Scripts/10b_annotation_bar_plot.py -a 01d_GoM_GeneCatalog_annotations.tsv -m 01c_GoM_GeneCatalog_meta.tsv -o 02_GoM_GeneCatalog
 
 From: /storage/scratch1/9/rconrad6/03b_GoM/01d_Shared_Gene_Content
 Predicted Gene Counts:
@@ -747,7 +749,151 @@ EN_83 163246 04b_Eggnog_Annotation/EN_83.emapper.annotations
 EN_84 41673 04b_Eggnog_Annotation/EN_84.emapper.annotations
 EN_85 146324 04b_Eggnog_Annotation/EN_85.emapper.annotations
 
+#####################################
+## STEP 11: Subsampled Shared Gene Fractions   ################################
+#####################################
+
+MMSeq2 clustering results of all predicted CDS from assembled contigs showed ≤ 50% shared genes between most samples and 30% or less between all 3 samples at a given depth.
+
+Here, to investigate if sequencing depth is associated with with a reduction in shared gene discovery, we will subsample the trimmed metagenome reads to 25, 50 and 75%, reassembled them, predict CDS from the new assemblies, recluster genes, and compute the shared gene fractions from each level of subsampling. This will repeat parts of Step 7 and Step 8.
+
+from /storage/scratch1/9/rconrad6/03c_GoM_One
+> mkdir 11_Subsample
+> cd 11_Subsample
+> mkdir 00a_log 00b_sbatch 00c_scripts 01_subsample 02_assemble 02_assembled 03_predict 04_cluster
+
+
+##
+01 Subsample trimmed metagenomes:
+####
+
+The trimmed metagenomes are here: 01a_Pipeline_Results/02_trim/*.coupled.fa
+
+> for f in ../01a_Pipeline_Results/02_trim/*.coupled.fa; do n=`basename $f | cut -d. -f1`; sbatch -o 00a_log/${n}.out -e 00a_log/${n}.err --export inf=${f},outf=01_subsample/${n} 00b_sbatch/01_subsample.sbatch; done
+
+##
+02 Assemble subsampled metagenomes:
+####
+
+> for f in 01_subsample/*_sbsmpl25.fa; do n=`basename $f | cut -d. -f1`; mkdir 02_assemble/${n}; sbatch -o 00a_log/02_${n}.out -e 00a_log/02_${n}.err --export inf=${f},outf=02_assemble/${n} 00b_sbatch/02_assemble.sbatch; done
+
+> for f in 01_subsample/*_sbsmpl50.fa; do n=`basename $f | cut -d. -f1`; mkdir 02_assemble/${n}; sbatch -o 00a_log/02_${n}.out -e 00a_log/02_${n}.err --export inf=${f},outf=02_assemble/${n} 00b_sbatch/02_assemble.sbatch; done
+
+> for f in 01_subsample/*_sbsmpl75.fa; do n=`basename $f | cut -d. -f1`; mkdir 02_assemble/${n}; sbatch -o 00a_log/02_${n}.out -e 00a_log/02_${n}.err --export inf=${f},outf=02_assemble/${n} 00b_sbatch/02_assemble.sbatch; done
+
+# Filter contigs < 1000 bp and rename contigs
+
+> for d in 02_assemble/EN_*; do n=`basename $d`; python 00c_scripts/01_Filter_Rename_fasta.py -i ${d}/contig.fa -o 02_assembled/${n}.LargeContigs.fna -p ${n} -m 1000; echo $d; done
+
+
+##
+03 Predict CDS
+####
+
+> for f in 02_assembled/*; do n=`basename $f | cut -d. -f1`; sbatch -o 00a_log/03_${n}.out -e 00a_log/03_${n}.err --export inf=${f},outf=03_predict,name=${n} 00b_sbatch/03_predict.sbatch; done
+
+##
+04 Cluster CDS
+####
+
+# concatenate genes for each subsampled set
+> cat 03_predict/*_sbsmpl25.faa > 03_sbsmpl25.faa
+> cat 03_predict/*_sbsmpl50.faa > 03_sbsmpl50.faa
+> cat 03_predict/*_sbsmpl75.faa > 03_sbsmpl75.faa
+
+# run clustering
+> mkdir 04_cluster/sbsmpl25 04_cluster/sbsmpl50 04_cluster/sbsmpl75
+
+> sbatch -o 00a_log/04_sbsmpl25.out -e 00a_log/04_sbsmpl25.err --export inf=03_sbsmpl25.faa,name=sbsmpl25,oDir=04_cluster/sbsmpl25 00b_sbatch/04_cluster.sbatch
+
+> sbatch -o 00a_log/04_sbsmpl50.out -e 00a_log/04_sbsmpl50.err --export inf=03_sbsmpl50.faa,name=sbsmpl50,oDir=04_cluster/sbsmpl50 00b_sbatch/04_cluster.sbatch
+
+> sbatch -o 00a_log/04_sbsmpl75.out -e 00a_log/04_sbsmpl75.err --export inf=03_sbsmpl75.faa,name=sbsmpl75,oDir=04_cluster/sbsmpl75 00b_sbatch/04_cluster.sbatch
+
+##
+05 Results
+####
+
+Download the the 02_MMSeqCluster40_${name}.tsv files and work from local directory: ~OneDrive/03c_GoM_One/11_Subsample
+
+# Convert MMSeqs cluster tsv to binary matrix of gene presence/absence per sample
+
+# sbsmpl25 Clustering
+> python ../00c_Scripts/07b_MMSeqsTSV-to-BinaryMatrix.py -i 00_MMSeqs2_Clusters/02_MMSeqCluster40_sbsmpl25.tsv -o 00_MMSeqs2_Clusters/04a_MMSeqCluster40_sbsmpl25_BinMat.tsv -k 00_MMSeqs2_Clusters/04b_MMSeqCluster40_sbsmpl25_cluster-key.tsv 
+
+# sbsmpl50 Clustering
+> python ../00c_Scripts/07b_MMSeqsTSV-to-BinaryMatrix.py -i 00_MMSeqs2_Clusters/02_MMSeqCluster40_sbsmpl50.tsv -o 00_MMSeqs2_Clusters/04a_MMSeqCluster40_sbsmpl50_BinMat.tsv -k 00_MMSeqs2_Clusters/04b_MMSeqCluster40_sbsmpl50_cluster-key.tsv 
+
+# sbsmpl75 Clustering
+> python ../00c_Scripts/07b_MMSeqsTSV-to-BinaryMatrix.py -i 00_MMSeqs2_Clusters/02_MMSeqCluster40_sbsmpl75.tsv -o 00_MMSeqs2_Clusters/04a_MMSeqCluster40_sbsmpl75_BinMat.tsv -k 00_MMSeqs2_Clusters/04b_MMSeqCluster40_sbsmpl75_cluster-key.tsv 
+
+# generate summaries etc from the binary matrix.
+# First, create a text file with lists of sample combinations to tests. 08_GoM_Test_Combinations.txt 
+# This list defines which samples to look for shared vs unshared genes between. One combination per line.
+# The script will also do all possible combinations of samples but this get crazy real fast.
+# We give the binary matrix file and the combinations file to the python script and voila.
+
+# sbsmpl25 Clustering
+> python ../00c_Scripts/07c_binary_matrix_analysis.py -b 00_MMSeqs2_Clusters/04a_MMSeqCluster40_sbsmpl25_BinMat.tsv -d 01_sbsmpl25_analysis -p 05_MMSeqCluster40_sbsmpl25 -l 08_GoM_Test_Combinations.txt -k 00_MMSeqs2_Clusters/04b_MMSeqCluster40_sbsmpl25_cluster-key.tsv 
+
+# sbsmpl50 Clustering
+> python ../00c_Scripts/07c_binary_matrix_analysis.py -b 00_MMSeqs2_Clusters/04a_MMSeqCluster40_sbsmpl50_BinMat.tsv -d 02_sbsmpl50_analysis -p 05_MMSeqCluster40_sbsmpl50 -l 08_GoM_Test_Combinations.txt -k 00_MMSeqs2_Clusters/04b_MMSeqCluster40_sbsmpl50_cluster-key.tsv
+
+# sbsmpl75 Clustering
+> python ../00c_Scripts/07c_binary_matrix_analysis.py -b 00_MMSeqs2_Clusters/04a_MMSeqCluster40_sbsmpl75_BinMat.tsv -d 03_sbsmpl75_analysis -p 05_MMSeqCluster40_sbsmpl75 -l 08_GoM_Test_Combinations.txt -k 00_MMSeqs2_Clusters/04b_MMSeqCluster40_sbsmpl75_cluster-key.tsv
+
+# The script above generates a summary table for each combination and files listing the core, accessory and specific genes
+
+# collect the summary files. Use the cluster Summary.tsv file output from the 07c_binary_matrix_analysis.py script. Copy the 03c_GoM_One/08_Functional_Diversity/40_Cluster_Analysis/04_MMSeqCluster_40_000_Summary.tsv file to use as sbsmpl100
+
+# Rename files to :
+    * 01_sbsmpl25_Summary.tsv
+    * 02_sbsmpl50_Summary.tsv
+    * 03_sbsmpl75_Summary.tsv
+    * 04_sbsmpl100_Summary.tsv
+
+# From: 03c_GoM_One/08_Functional_Diversity/
+
+> python ../00c_Scripts/08d_Genetic_Function_Diversity_plots.py -i 04_Summaries -o sbsmpl_genes
+
+
+> python ../00c_Scripts/08d_Genetic_Function_Diversity_plots.py -i 00_data -o seqid_genes
 
 #####################################
 ## STEP XX: DEFAULT   ################################
 #####################################
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
